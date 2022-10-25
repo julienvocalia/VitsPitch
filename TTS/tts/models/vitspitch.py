@@ -717,7 +717,7 @@ class VitsPitch(BaseTTS):
         )
 
         if self.args.init_discriminator:
-            self.disc = VitsPitchDiscriminator(
+            self.disc = VitsDiscriminator(
                 periods=self.args.periods_multi_period_discriminator,
                 use_spectral_norm=self.args.use_spectral_norm_disriminator,
             )

@@ -2,7 +2,7 @@ from dataclasses import dataclass, field
 from typing import List
 
 from TTS.tts.configs.shared_configs import BaseTTSConfig
-from TTS.tts.models.vitsPitch import VitsPitchArgs,VitsPitchAudioConfig
+from TTS.tts.models.vitspitch import VitsPitchArgs,VitsPitchAudioConfig
 
 @dataclass
 class VitsPitchConfig(BaseTTSConfig):
@@ -108,7 +108,7 @@ class VitsPitchConfig(BaseTTSConfig):
     model: str = "vitspitch"
     # model specific params
     model_args: VitsPitchArgs = field(default_factory=VitsPitchArgs)
-    audio: VitsAudioConfig = VitsAudioConfig()
+    audio: VitsPitchAudioConfig = VitsPitchAudioConfig()
 
     # optimizer
     grad_clip: List[float] = field(default_factory=lambda: [1000, 1000])
