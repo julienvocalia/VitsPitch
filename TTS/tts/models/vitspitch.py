@@ -32,6 +32,9 @@ from TTS.tts.utils.synthesis import synthesis
 from TTS.tts.utils.text.characters import BaseCharacters, _characters, _pad, _phonemes, _punctuations
 from TTS.tts.utils.text.tokenizer import TTSTokenizer
 from TTS.tts.utils.visual import plot_alignment
+#ADDITION FOR FAST_PITCH
+from TTS.tts.utils.visual import plot_avg_pitch
+
 from TTS.utils.io import load_fsspec
 from TTS.utils.samplers import BucketBatchSampler
 from TTS.vocoder.models.hifigan_generator import HifiganGenerator
@@ -536,6 +539,21 @@ class VitsPitchArgs(Coqpit):
             will be used to upsampling the latent variable z with the sampling rate `encoder_sample_rate`
             to the `config.audio.sample_rate`. If it is False you will need to add extra
             `upsample_rates_decoder` to match the shape. Defaults to True.
+            
+        use_pitch (bool):
+            Use pitch predictor to learn the pitch. Defaults to True.
+
+        pitch_predictor_hidden_channels (int):
+            Number of hidden channels in the pitch predictor. Defaults to 256.
+
+        pitch_predictor_dropout_p (float):
+            Dropout rate for the pitch predictor. Defaults to 0.1.
+
+        pitch_predictor_kernel_size (int):
+            Kernel size of conv layers in the pitch predictor. Defaults to 3.
+
+        pitch_embedding_kernel_size (int):
+            Kernel size of the projection layer in the pitch predictor. Defaults to 3.
 
     """
 
@@ -596,6 +614,12 @@ class VitsPitchArgs(Coqpit):
     interpolate_z: bool = True
     reinit_DP: bool = False
     reinit_text_encoder: bool = False
+    #ADDITION FOR FAST_PITCH
+    use_pitch: bool = True
+    pitch_predictor_hidden_channels: int = 256
+    pitch_predictor_kernel_size: int = 3
+    pitch_predictor_dropout_p: float = 0.1
+    pitch_embedding_kernel_size: int = 3
 
 
 class VitsPitch(BaseTTS):
@@ -648,6 +672,8 @@ class VitsPitch(BaseTTS):
         self.noise_scale_dp = self.args.noise_scale_dp
         self.max_inference_len = self.args.max_inference_len
         self.spec_segment_size = self.args.spec_segment_size
+        #ADDITION FOR FAST_PITCH
+        self.use_pitch = self.args.use_pitch
 
         self.text_encoder = TextEncoder(
             self.args.num_chars,
@@ -720,6 +746,21 @@ class VitsPitch(BaseTTS):
             self.disc = VitsDiscriminator(
                 periods=self.args.periods_multi_period_discriminator,
                 use_spectral_norm=self.args.use_spectral_norm_disriminator,
+            )
+            
+        #ADDITION FOR FAST_PITCH
+        if self.args.use_pitch:
+            self.pitch_predictor = DurationPredictor(
+                self.args.hidden_channels + self.embedded_speaker_dim,
+                self.args.pitch_predictor_hidden_channels,
+                self.args.pitch_predictor_kernel_size,
+                self.args.pitch_predictor_dropout_p,
+            )
+            self.pitch_emb = nn.Conv1d(
+                1,
+                self.args.hidden_channels,
+                kernel_size=self.args.pitch_embedding_kernel_size,
+                padding=int((self.args.pitch_embedding_kernel_size - 1) / 2),
             )
 
     @property
@@ -939,7 +980,44 @@ class VitsPitch(BaseTTS):
             loss_duration = torch.sum((log_durations - attn_log_durations) ** 2, [1, 2]) / torch.sum(x_mask)
         outputs["loss_duration"] = loss_duration
         return outputs, attn
+        
+    #ADDITION FOR FAST_PITCH
+    def _forward_pitch_predictor(
+        self,
+        o_en: torch.FloatTensor,
+        x_mask: torch.IntTensor,
+        pitch: torch.FloatTensor = None,
+        dr: torch.IntTensor = None,
+    ) -> Tuple[torch.FloatTensor, torch.FloatTensor]:
+        """Pitch predictor forward pass.
 
+        1. Predict pitch from encoder outputs.
+        2. In training - Compute average pitch values for each input character from the ground truth pitch values.
+        3. Embed average pitch values.
+
+        Args:
+            o_en (torch.FloatTensor): Encoder output.
+            x_mask (torch.IntTensor): Input sequence mask.
+            pitch (torch.FloatTensor, optional): Ground truth pitch values. Defaults to None.
+            dr (torch.IntTensor, optional): Ground truth durations. Defaults to None.
+
+        Returns:
+            Tuple[torch.FloatTensor, torch.FloatTensor]: Pitch embedding, pitch prediction.
+
+        Shapes:
+            - o_en: :math:`(B, C, T_{en})`
+            - x_mask: :math:`(B, 1, T_{en})`
+            - pitch: :math:`(B, 1, T_{de})`
+            - dr: :math:`(B, T_{en})`
+        """
+        o_pitch = self.pitch_predictor(o_en, x_mask)
+        if pitch is not None:
+            avg_pitch = average_over_durations(pitch, dr)
+            o_pitch_emb = self.pitch_emb(avg_pitch)
+            return o_pitch_emb, o_pitch, avg_pitch
+        o_pitch_emb = self.pitch_emb(o_pitch)
+        return o_pitch_emb, o_pitch
+        
     def upsampling_z(self, z, slice_ids=None, y_lengths=None, y_mask=None):
         spec_segment_size = self.spec_segment_size
         if self.args.encoder_sample_rate:
@@ -964,6 +1042,10 @@ class VitsPitch(BaseTTS):
         y: torch.tensor,
         y_lengths: torch.tensor,
         waveform: torch.tensor,
+        #ADDITION FOR FAST_PITCH
+        dr: torch.IntTensor = None,
+        pitch: torch.FloatTensor = None,
+        
         aux_input={"d_vectors": None, "speaker_ids": None, "language_ids": None},
     ) -> Dict:
         """Forward pass of the model.
@@ -974,6 +1056,7 @@ class VitsPitch(BaseTTS):
             y (torch.tensor): Batch of input spectrograms.
             y_lengths (torch.tensor): Batch of input spectrogram lengths.
             waveform (torch.tensor): Batch of ground truth waveforms per sample.
+            pitch (torch.FloatTensor): Pitch values for each spectrogram frame. Only used when the pitch predictor is on. Defaults to None.
             aux_input (dict, optional): Auxiliary inputs for multi-speaker and multi-lingual training.
                 Defaults to {"d_vectors": None, "speaker_ids": None, "language_ids": None}.
 
@@ -989,6 +1072,7 @@ class VitsPitch(BaseTTS):
             - d_vectors: :math:`[B, C, 1]`
             - speaker_ids: :math:`[B]`
             - language_ids: :math:`[B]`
+            - pitch: :math:`[B, 1, T]`
 
         Return Shapes:
             - model_outputs: :math:`[B, 1, T_wav]`
@@ -1014,7 +1098,16 @@ class VitsPitch(BaseTTS):
         if self.args.use_language_embedding and lid is not None:
             lang_emb = self.emb_l(lid).unsqueeze(-1)
 
+        # Text Encoding
         x, m_p, logs_p, x_mask = self.text_encoder(x, x_lengths, lang_emb=lang_emb)
+        
+        #ADDITION FOR FAST_PITCH
+        # pitch predictor pass and addition
+        o_pitch = None
+        avg_pitch = None
+        if self.args.use_pitch:
+            o_pitch_emb, o_pitch, avg_pitch = self._forward_pitch_predictor(x, x_mask, pitch, dr)
+            x = x + o_pitch_emb
 
         # posterior encoder
         z, m_q, logs_q, y_mask = self.posterior_encoder(y, y_lengths, g=g)
@@ -1074,6 +1167,9 @@ class VitsPitch(BaseTTS):
                 "gt_spk_emb": gt_spk_emb,
                 "syn_spk_emb": syn_spk_emb,
                 "slice_ids": slice_ids,
+                #ADDITION FOR FAST_PITCH
+                "pitch_avg": o_pitch,
+                "pitch_avg_gt": avg_pitch,
             }
         )
         return outputs
@@ -1120,7 +1216,15 @@ class VitsPitch(BaseTTS):
         if self.args.use_language_embedding and lid is not None:
             lang_emb = self.emb_l(lid).unsqueeze(-1)
 
+        #Text encoding
         x, m_p, logs_p, x_mask = self.text_encoder(x, x_lengths, lang_emb=lang_emb)
+        
+        #ADDITION FOR FAST_PITCH
+        # pitch predictor pass
+        o_pitch = None
+        if self.args.use_pitch:
+            o_pitch_emb, o_pitch = self._forward_pitch_predictor(x, x_mask)
+            x = x + o_pitch_emb
 
         if durations is None:
             if self.args.use_sdp:
@@ -1168,6 +1272,8 @@ class VitsPitch(BaseTTS):
             "m_p": m_p,
             "logs_p": logs_p,
             "y_mask": y_mask,
+            #ADDITION FOR FAST_PITCH
+            "pitch": o_pitch
         }
         return outputs
 
@@ -1249,7 +1355,10 @@ class VitsPitch(BaseTTS):
             speaker_ids = batch["speaker_ids"]
             language_ids = batch["language_ids"]
             waveform = batch["waveform"]
-
+            #ADDITION FOR FAST_PITCH
+            pitch = batch["pitch"] if self.args.use_pitch else None
+            durations = batch["durations"]
+            
             # generator pass
             outputs = self.forward(
                 tokens,
@@ -1257,6 +1366,10 @@ class VitsPitch(BaseTTS):
                 spec,
                 spec_lens,
                 waveform,
+                #ADDITION FOR FAST_PITCH
+                dr=durations,
+                pitch=pitch,
+                
                 aux_input={"d_vectors": d_vectors, "speaker_ids": speaker_ids, "language_ids": language_ids},
             )
 
@@ -1324,6 +1437,9 @@ class VitsPitch(BaseTTS):
                     use_speaker_encoder_as_loss=self.args.use_speaker_encoder_as_loss,
                     gt_spk_emb=self.model_outputs_cache["gt_spk_emb"],
                     syn_spk_emb=self.model_outputs_cache["syn_spk_emb"],
+                    #ADDITION FOR FAST_PITCH
+                    pitch_output=self.model_outputs_cache["pitch_avg"] if self.use_pitch else None,
+                    pitch_target=self.model_outputs_cache["pitch_avg_gt"] if self.use_pitch else None,
                 )
 
             return self.model_outputs_cache, loss_dict
@@ -1345,6 +1461,19 @@ class VitsPitch(BaseTTS):
                 "alignment": plot_alignment(align_img, output_fig=False),
             }
         )
+        
+        #ADDITION FOR FAST_PITCH
+        # plot pitch figures
+        if self.args.use_pitch:
+            pitch_avg = abs(outputs["pitch_avg_gt"][0, 0].data.cpu().numpy())
+            pitch_avg_hat = abs(outputs["pitch_avg"][0, 0].data.cpu().numpy())
+            chars = self.tokenizer.decode(batch["text_input"][0].data.cpu().numpy())
+            pitch_figures = {
+                "pitch_ground_truth": plot_avg_pitch(pitch_avg, chars, output_fig=False),
+                "pitch_avg_predicted": plot_avg_pitch(pitch_avg_hat, chars, output_fig=False),
+            }
+            figures.update(pitch_figures)
+            
         return figures, audios
 
     def train_log(
@@ -1681,10 +1810,12 @@ class VitsPitch(BaseTTS):
         `train_step()`"""
         from TTS.tts.layers.losses import (  # pylint: disable=import-outside-toplevel
             VitsDiscriminatorLoss,
-            VitsGeneratorLoss,
+            #UPDATE FOR FAST_PITCH
+            VitsPitchGeneratorLoss,
         )
 
-        return [VitsDiscriminatorLoss(self.config), VitsGeneratorLoss(self.config)]
+        #UPDATE FOR FAST_PITCH
+        return [VitsDiscriminatorLoss(self.config), VitsPitchGeneratorLoss(self.config)]
 
     def load_checkpoint(
         self,

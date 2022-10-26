@@ -13,10 +13,10 @@ class VitsPitchConfig(BaseTTSConfig):
             Model name. Do not change unless you know what you are doing.
 
         model_args (VitsArgs):
-            Model architecture arguments. Defaults to `VitsArgs()`.
+            Model architecture arguments. Defaults to `VitsPitchArgs()`.
 
         audio (VitsAudioConfig):
-            Audio processing configuration. Defaults to `VitsAudioConfig()`.
+            Audio processing configuration. Defaults to `VitsPitchAudioConfig()`.
 
         grad_clip (List):
             Gradient clipping thresholds for each optimizer. Defaults to `[1000.0, 1000.0]`.
@@ -95,20 +95,29 @@ class VitsPitchConfig(BaseTTSConfig):
 
         use_language_embedding (bool):
             If true, language embedding is used. Defaults to `False`.
+            
+            
+        pitch_loss_alpha (float):
+            Weight for the pitch predictor's loss. If set 0, disables the pitch predictor. Defaults to 1.0.
 
     Note:
         Check :class:`TTS.tts.configs.shared_configs.BaseTTSConfig` for the inherited parameters.
 
     Example:
 
-        >>> from TTS.tts.configs.vits_config import VitsConfig
-        >>> config = VitsConfig()
+        >>> from TTS.tts.configs.vitspitch_config import VitsPitchConfig
+        >>> config = VitsPitchConfig()
     """
 
     model: str = "vitspitch"
     # model specific params
     model_args: VitsPitchArgs = field(default_factory=VitsPitchArgs)
     audio: VitsPitchAudioConfig = VitsPitchAudioConfig()
+
+    #ADDITION FROM FAST_PITCH
+    # dataset configs
+    compute_f0: bool = True
+    f0_cache_path: str = None
 
     # optimizer
     grad_clip: List[float] = field(default_factory=lambda: [1000, 1000])
@@ -130,6 +139,8 @@ class VitsPitchConfig(BaseTTSConfig):
     mel_loss_alpha: float = 45.0
     dur_loss_alpha: float = 1.0
     speaker_encoder_loss_alpha: float = 1.0
+    #ADDITION FROM FAST_PITCH
+    pitch_loss_alpha: float = 0.1
 
     # data loader params
     return_wav: bool = True
