@@ -1357,7 +1357,7 @@ class VitsPitch(BaseTTS):
             waveform = batch["waveform"]
             #ADDITION FOR FAST_PITCH
             pitch = batch["pitch"] if self.args.use_pitch else None
-            durations = batch["durations"]
+            durations = batch["durations"] if self.args.use_pitch else None
             
             # generator pass
             outputs = self.forward(
