@@ -279,6 +279,12 @@ class VitsPitchDataset(TTSDataset):
         if len(token_ids) > self.max_text_len or wav.shape[1] < self.min_audio_len:
             self.rescue_item_idx += 1
             return self.__getitem__(self.rescue_item_idx)
+            
+        #ADDITION FOR FAST_PITCH
+        # get f0 values
+        f0 = None
+        if self.compute_f0:
+            f0 = self.get_f0(idx)["f0"]
 
         return {
             "raw_text": raw_text,
@@ -289,6 +295,8 @@ class VitsPitchDataset(TTSDataset):
             "speaker_name": item["speaker_name"],
             "language_name": item["language"],
             "audio_unique_name": item["audio_unique_name"],
+            #ADDITION FOR FAST_PITCH
+            "pitch": f0,
         }
 
     @property
@@ -355,6 +363,8 @@ class VitsPitchDataset(TTSDataset):
             "audio_files": batch["wav_file"],
             "raw_text": batch["raw_text"],
             "audio_unique_names": batch["audio_unique_name"],
+            #ADDITION FOR FAST_PITCH
+            "pitch" : batch["pitch"]
         }
 
 
