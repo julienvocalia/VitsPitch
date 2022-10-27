@@ -564,6 +564,11 @@ class VitsPitchArgs(Coqpit):
 
         pitch_embedding_kernel_size (int):
             Kernel size of the projection layer in the pitch predictor. Defaults to 3.
+        
+        use_aligner (bool):
+            Whether to use aligner network to learn the text to speech alignment or use pre-computed durations.
+            If set False, durations should be computed by `TTS/bin/compute_attention_masks.py` and path to the
+            pre-computed durations must be provided to `config.datasets[0].meta_file_attn_mask`. Defaults to True.
 
     """
 
@@ -625,6 +630,7 @@ class VitsPitchArgs(Coqpit):
     reinit_DP: bool = False
     reinit_text_encoder: bool = False
     #ADDITION FOR FAST_PITCH
+    use_aligner: bool = True
     use_pitch: bool = True
     pitch_predictor_hidden_channels: int = 256
     pitch_predictor_kernel_size: int = 3
