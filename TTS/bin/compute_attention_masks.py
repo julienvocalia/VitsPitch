@@ -12,9 +12,10 @@ from TTS.config import load_config
 #CORRRECTION FOR VITSPITCH
 #from TTS.tts.datasets.TTSDataset import TTSDataset
 from TTS.tts.datasets.dataset import TTSDataset
+#from TTS.tts.utils.text.characters import make_symbols, phonemes, symbols
+
 
 from TTS.tts.models import setup_model
-from TTS.tts.utils.text.characters import make_symbols, phonemes, symbols
 from TTS.utils.audio import AudioProcessor
 from TTS.utils.io import load_checkpoint
 
@@ -71,12 +72,15 @@ Example run:
     C = load_config(args.config_path)
     ap = AudioProcessor(**C.audio)
 
+    #CORRECTION FOR VITSPITCH
     # if the vocabulary was passed, replace the default
-    if "characters" in C.keys():
-        symbols, phonemes = make_symbols(**C.characters)
+    #if "characters" in C.keys():
+    #    symbols, phonemes = make_symbols(**C.characters)
 
     # load the model
-    num_chars = len(phonemes) if C.use_phonemes else len(symbols)
+    #num_chars = len(phonemes) if C.use_phonemes else len(symbols)
+    
+    
     # TODO: handle multi-speaker
     model = setup_model(C)
     model, _ = load_checkpoint(model, args.model_path, args.use_cuda, True)
