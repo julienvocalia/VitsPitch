@@ -89,21 +89,41 @@ Example run:
     preprocessor = importlib.import_module("TTS.tts.datasets.formatters")
     preprocessor = getattr(preprocessor, args.dataset)
     meta_data = preprocessor(args.data_path, args.dataset_metafile)
+    
+    #BIDOUILLE FAST_PITCH
+    from TTS.config.shared_configs import  BaseDatasetConfig
+    from TTS.tts.datasets import load_tts_samples
+    dataset_config = [
+        BaseDatasetConfig(formatter="vctk", meta_file_train=None, path="/home/ec2-user/SageMaker/efs/audio_dataset/siwis_custom_22khz/", language="fr_FR")]
+    # load training samples
+    samples = load_tts_samples(
+        dataset_config,
+    )
+    print("SAMPLES LOADED")
+  
+    
+    
     dataset = TTSDataset(
         model.decoder.r,
         C.text_cleaner,
-        compute_linear_spec=False,
+        model.decoder.r,
+        C.text_cleaner,
+        #BIDOUILLE FAST_PITCH
+        #compute_linear_spec=False, useless, false by default
         ap=ap,
-        meta_data=meta_data,
-        characters=C.characters if "characters" in C.keys() else None,
-        add_blank=C["add_blank"] if "add_blank" in C.keys() else False,
-        use_phonemes=C.use_phonemes,
+        #meta_data=meta_data,
+        #characters=C.characters if "characters" in C.keys() else None,
+        #add_blank=C["add_blank"] if "add_blank" in C.keys() else False,
+        #use_phonemes=C.use_phonemes,
         phoneme_cache_path=C.phoneme_cache_path,
-        phoneme_language=C.phoneme_language,
-        enable_eos_bos=C.enable_eos_bos_chars,
+        #phoneme_language=C.phoneme_language,
+        #enable_eos_bos=C.enable_eos_bos_chars,
+        tokenizer=model.tokenizer,
+        samples=samples
     )
-
-    dataset.sort_and_filter_items(C.get("sort_by_audio_len", default=False))
+    
+    #BIDOUILLE FAST_PITCH
+    #dataset.sort_and_filter_items(C.get("sort_by_audio_len", default=False))
     loader = DataLoader(
         dataset,
         batch_size=args.batch_size,
