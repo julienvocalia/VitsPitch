@@ -9,7 +9,10 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 from TTS.config import load_config
-from TTS.tts.datasets.TTSDataset import TTSDataset
+#CORRRECTION FOR VITSPITCH
+#from TTS.tts.datasets.TTSDataset import TTSDataset
+from TTS.tts.datasets.dataset import TTSDataset
+
 from TTS.tts.models import setup_model
 from TTS.tts.utils.text.characters import make_symbols, phonemes, symbols
 from TTS.utils.audio import AudioProcessor
