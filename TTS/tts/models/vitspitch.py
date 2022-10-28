@@ -1173,7 +1173,7 @@ class VitsPitch(BaseTTS):
         #ADDITION FOR FAST_PITCH
         # duration calculation with generic aligner
         if self.use_aligner:
-            aligner_y_mask = torch.unsqueeze(sequence_mask(y_lengths, None), 1).float()
+            aligner_y_mask = torch.unsqueeze(sequence_mask(y_lengths, y.shape[1]), 1).float()
             o_alignment_dur, alignment_soft, alignment_logprob, alignment_mas = self._forward_aligner(
                 x_emb, y, x_mask, aligner_y_mask
             )
