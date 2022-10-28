@@ -637,6 +637,8 @@ class VitsPitchArgs(Coqpit):
     pitch_predictor_kernel_size: int = 3
     pitch_predictor_dropout_p: float = 0.1
     pitch_embedding_kernel_size: int = 3
+    aligner_out_channels=80
+    aligner_hidden_channels=384
 
 
 class VitsPitch(BaseTTS):
@@ -782,7 +784,7 @@ class VitsPitch(BaseTTS):
             )
         if self.args.use_aligner:
             self.aligner = AlignmentNetwork(
-                in_query_channels=self.args.out_channels, in_key_channels=self.args.hidden_channels
+                in_query_channels=self.args.aligner_out_channels, in_key_channels=self.args.aligner_hidden_channels
             )
 
     @property
