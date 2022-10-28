@@ -1164,19 +1164,23 @@ class VitsPitch(BaseTTS):
         lang_emb = None
         if self.args.use_language_embedding and lid is not None:
             lang_emb = self.emb_l(lid).unsqueeze(-1)
+            
+        #ADDITION FOR FAST_PITCH
+        # duration calculation with generic aligner
+        if self.use_aligner:
+            aligner_y_mask = torch.unsqueeze(sequence_mask(y_lengths, None), 1).float()
+            aligner_x_mask = torch.unsqueeze(sequence_mask(x_lengths, x.shape[1]), 1).float()
+            o_alignment_dur, alignment_soft, alignment_logprob, alignment_mas = self._forward_aligner(
+                x, y, aligner_x_mask, aligner_y_mask
+            )
+            alignment_soft = alignment_soft.transpose(1, 2)
+            alignment_mas = alignment_mas.transpose(1, 2)
+            dr = o_alignment_dur
 
         # Text Encoding
         x, m_p, logs_p, x_mask = self.text_encoder(x, x_lengths, lang_emb=lang_emb)
         
         #ADDITION FOR FAST_PITCH
-        if self.use_aligner:
-            aligner_y_mask = torch.unsqueeze(sequence_mask(y_lengths, None), 1).float()
-            o_alignment_dur, alignment_soft, alignment_logprob, alignment_mas = self._forward_aligner(
-                x, y, x_mask, aligner_y_mask
-            )
-            alignment_soft = alignment_soft.transpose(1, 2)
-            alignment_mas = alignment_mas.transpose(1, 2)
-            dr = o_alignment_dur
         # pitch predictor pass and addition
         o_pitch = None
         avg_pitch = None
