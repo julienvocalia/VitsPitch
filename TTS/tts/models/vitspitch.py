@@ -1036,7 +1036,7 @@ class VitsPitch(BaseTTS):
         return o_pitch_emb, o_pitch
 
     #ADDITION FOR FAST_PITCH
-     def _forward_aligner(
+    def _forward_aligner(
         self, x: torch.FloatTensor, y: torch.FloatTensor, x_mask: torch.IntTensor, y_mask: torch.IntTensor
     ) -> Tuple[torch.IntTensor, torch.FloatTensor, torch.FloatTensor, torch.FloatTensor]:
         """Aligner forward pass.
@@ -1163,8 +1163,9 @@ class VitsPitch(BaseTTS):
         
         #ADDITION FOR FAST_PITCH
         if self.use_aligner:
+            aligner_y_mask = torch.unsqueeze(sequence_mask(y_lengths, None), 1).float()
             o_alignment_dur, alignment_soft, alignment_logprob, alignment_mas = self._forward_aligner(
-                x_emb, y, x_mask, y_mask
+                x, y, x_mask, aligner_y_mask
             )
             alignment_soft = alignment_soft.transpose(1, 2)
             alignment_mas = alignment_mas.transpose(1, 2)
