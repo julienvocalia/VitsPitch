@@ -1059,7 +1059,7 @@ class VitsPitch(BaseTTS):
         y_lengths: torch.tensor,
         waveform: torch.tensor,
         #ADDITION FOR FAST_PITCH
-        dr: torch.IntTensor = None,
+        #dr: torch.IntTensor = None,
         pitch: torch.FloatTensor = None,
         
         aux_input={"d_vectors": None, "speaker_ids": None, "language_ids": None},
@@ -1118,6 +1118,13 @@ class VitsPitch(BaseTTS):
         x, m_p, logs_p, x_mask = self.text_encoder(x, x_lengths, lang_emb=lang_emb)
         
         #ADDITION FOR FAST_PITCH
+        if self.use_aligner:
+            o_alignment_dur, alignment_soft, alignment_logprob, alignment_mas = self._forward_aligner(
+                x_emb, y, x_mask, y_mask
+            )
+            alignment_soft = alignment_soft.transpose(1, 2)
+            alignment_mas = alignment_mas.transpose(1, 2)
+            dr = o_alignment_dur
         # pitch predictor pass and addition
         o_pitch = None
         avg_pitch = None
@@ -1184,6 +1191,7 @@ class VitsPitch(BaseTTS):
                 "syn_spk_emb": syn_spk_emb,
                 "slice_ids": slice_ids,
                 #ADDITION FOR FAST_PITCH
+                "o_alignment_dur": o_alignment_dur,
                 "pitch_avg": o_pitch,
                 "pitch_avg_gt": avg_pitch,
             }
@@ -1373,7 +1381,7 @@ class VitsPitch(BaseTTS):
             waveform = batch["waveform"]
             #ADDITION FOR FAST_PITCH
             pitch = batch["pitch"] if self.args.use_pitch else None
-            durations = batch["durations"] if self.args.use_pitch else None
+            #durations = batch["durations"] if self.args.use_pitch else None
             
             # generator pass
             outputs = self.forward(
@@ -1383,11 +1391,16 @@ class VitsPitch(BaseTTS):
                 spec_lens,
                 waveform,
                 #ADDITION FOR FAST_PITCH
-                dr=durations,
+                #dr=durations,
                 pitch=pitch,
                 
                 aux_input={"d_vectors": d_vectors, "speaker_ids": speaker_ids, "language_ids": language_ids},
             )
+            
+            #ADDITION FOR FAST_PITCH
+            # use aligner's output as the duration target
+            if self.use_aligner:
+                durations = outputs["o_alignment_dur"]
 
             # cache tensors for the generator pass
             self.model_outputs_cache = outputs  # pylint: disable=attribute-defined-outside-init
@@ -1402,6 +1415,8 @@ class VitsPitch(BaseTTS):
                 loss_dict = criterion[optimizer_idx](
                     scores_disc_real,
                     scores_disc_fake,
+                    #ADDITION FOR FAST_PITCH
+                    dur_target=durations,
                 )
             return outputs, loss_dict
 
