@@ -22,7 +22,7 @@ from TTS.tts.configs.shared_configs import CharactersConfig
 from TTS.tts.datasets.dataset import TTSDataset, _parse_sample
 from TTS.tts.layers.glow_tts.duration_predictor import DurationPredictor
 from TTS.tts.layers.vits.discriminator import VitsDiscriminator
-from TTS.tts.layers.vits.networks import PosteriorEncoder, ResidualCouplingBlocks, TextEncoder
+from TTS.tts.layers.vitspitch.networks import PosteriorEncoder, ResidualCouplingBlocks, TextEncoder
 from TTS.tts.layers.vits.stochastic_duration_predictor import StochasticDurationPredictor
 from TTS.tts.models.base_tts import BaseTTS
 from TTS.tts.utils.helpers import generate_path, maximum_path, rand_segments, segment, sequence_mask
@@ -1165,22 +1165,21 @@ class VitsPitch(BaseTTS):
         if self.args.use_language_embedding and lid is not None:
             lang_emb = self.emb_l(lid).unsqueeze(-1)
             
+        #MODIFICATION FOR FAST_PITCH
+        # Text Encoding
+        #x, m_p, logs_p, x_mask = self.text_encoder(x, x_lengths, lang_emb=lang_emb)
+        x, m_p, logs_p, x_mask, x_emb = self.text_encoder(x, x_lengths, lang_emb=lang_emb)
+       
         #ADDITION FOR FAST_PITCH
         # duration calculation with generic aligner
         if self.use_aligner:
             aligner_y_mask = torch.unsqueeze(sequence_mask(y_lengths, None), 1).float()
-            aligner_x_mask = torch.unsqueeze(sequence_mask(x_lengths, x.shape[1]), 1).float()
             o_alignment_dur, alignment_soft, alignment_logprob, alignment_mas = self._forward_aligner(
-                x, y, aligner_x_mask, aligner_y_mask
+                x_emb, y, x_mask, aligner_y_mask
             )
             alignment_soft = alignment_soft.transpose(1, 2)
             alignment_mas = alignment_mas.transpose(1, 2)
             dr = o_alignment_dur
-
-        # Text Encoding
-        x, m_p, logs_p, x_mask = self.text_encoder(x, x_lengths, lang_emb=lang_emb)
-        
-        #ADDITION FOR FAST_PITCH
         # pitch predictor pass and addition
         o_pitch = None
         avg_pitch = None
