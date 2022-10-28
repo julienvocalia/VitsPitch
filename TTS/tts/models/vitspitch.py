@@ -690,6 +690,7 @@ class VitsPitch(BaseTTS):
         self.spec_segment_size = self.args.spec_segment_size
         #ADDITION FOR FAST_PITCH
         self.use_pitch = self.args.use_pitch
+        self.use_aligner = self.args.use_aligner
 
         self.text_encoder = TextEncoder(
             self.args.num_chars,
