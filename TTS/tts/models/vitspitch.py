@@ -25,7 +25,7 @@ from TTS.tts.layers.vits.discriminator import VitsDiscriminator
 from TTS.tts.layers.vitspitch.networks import PosteriorEncoder, ResidualCouplingBlocks, TextEncoder
 from TTS.tts.layers.vits.stochastic_duration_predictor import StochasticDurationPredictor
 from TTS.tts.models.base_tts import BaseTTS
-from TTS.tts.utils.helpers import generate_path, maximum_path, rand_segments, segment, sequence_mask
+from TTS.tts.utils.helpers import generate_path, maximum_path, rand_segments, segment, sequence_mask, average_over_durations
 from TTS.tts.utils.languages import LanguageManager
 from TTS.tts.utils.speakers import SpeakerManager
 from TTS.tts.utils.synthesis import synthesis
@@ -639,6 +639,8 @@ class VitsPitchArgs(Coqpit):
     pitch_embedding_kernel_size: int = 3
     aligner_out_channels=80
     aligner_hidden_channels=384
+    compute_f0: bool = True
+    f0_cache_path: str = None
 
 
 class VitsPitch(BaseTTS):
