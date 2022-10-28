@@ -1034,7 +1034,50 @@ class VitsPitch(BaseTTS):
             return o_pitch_emb, o_pitch, avg_pitch
         o_pitch_emb = self.pitch_emb(o_pitch)
         return o_pitch_emb, o_pitch
-        
+
+    #ADDITION FOR FAST_PITCH
+     def _forward_aligner(
+        self, x: torch.FloatTensor, y: torch.FloatTensor, x_mask: torch.IntTensor, y_mask: torch.IntTensor
+    ) -> Tuple[torch.IntTensor, torch.FloatTensor, torch.FloatTensor, torch.FloatTensor]:
+        """Aligner forward pass.
+
+        1. Compute a mask to apply to the attention map.
+        2. Run the alignment network.
+        3. Apply MAS to compute the hard alignment map.
+        4. Compute the durations from the hard alignment map.
+
+        Args:
+            x (torch.FloatTensor): Input sequence.
+            y (torch.FloatTensor): Output sequence.
+            x_mask (torch.IntTensor): Input sequence mask.
+            y_mask (torch.IntTensor): Output sequence mask.
+
+        Returns:
+            Tuple[torch.IntTensor, torch.FloatTensor, torch.FloatTensor, torch.FloatTensor]:
+                Durations from the hard alignment map, soft alignment potentials, log scale alignment potentials,
+                hard alignment map.
+
+        Shapes:
+            - x: :math:`[B, T_en, C_en]`
+            - y: :math:`[B, T_de, C_de]`
+            - x_mask: :math:`[B, 1, T_en]`
+            - y_mask: :math:`[B, 1, T_de]`
+
+            - o_alignment_dur: :math:`[B, T_en]`
+            - alignment_soft: :math:`[B, T_en, T_de]`
+            - alignment_logprob: :math:`[B, 1, T_de, T_en]`
+            - alignment_mas: :math:`[B, T_en, T_de]`
+        """
+        attn_mask = torch.unsqueeze(x_mask, -1) * torch.unsqueeze(y_mask, 2)
+        alignment_soft, alignment_logprob = self.aligner(y.transpose(1, 2), x.transpose(1, 2), x_mask, None)
+        alignment_mas = maximum_path(
+            alignment_soft.squeeze(1).transpose(1, 2).contiguous(), attn_mask.squeeze(1).contiguous()
+        )
+        o_alignment_dur = torch.sum(alignment_mas, -1).int()
+        alignment_soft = alignment_soft.squeeze(1).transpose(1, 2)
+        return o_alignment_dur, alignment_soft, alignment_logprob, alignment_mas
+
+  
     def upsampling_z(self, z, slice_ids=None, y_lengths=None, y_mask=None):
         spec_segment_size = self.spec_segment_size
         if self.args.encoder_sample_rate:
