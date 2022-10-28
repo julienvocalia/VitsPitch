@@ -779,6 +779,10 @@ class VitsPitch(BaseTTS):
                 kernel_size=self.args.pitch_embedding_kernel_size,
                 padding=int((self.args.pitch_embedding_kernel_size - 1) / 2),
             )
+        if self.args.use_aligner:
+            self.aligner = AlignmentNetwork(
+                in_query_channels=self.args.out_channels, in_key_channels=self.args.hidden_channels
+            )
 
     @property
     def device(self):
