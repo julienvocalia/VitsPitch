@@ -34,6 +34,7 @@ from TTS.tts.utils.text.tokenizer import TTSTokenizer
 from TTS.tts.utils.visual import plot_alignment
 #ADDITION FOR FAST_PITCH
 from TTS.tts.utils.visual import plot_avg_pitch
+from TTS.tts.layers.generic.aligner import AlignmentNetwork
 
 from TTS.utils.io import load_fsspec
 from TTS.utils.samplers import BucketBatchSampler
