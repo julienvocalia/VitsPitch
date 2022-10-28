@@ -696,6 +696,8 @@ class VitsPitch(BaseTTS):
         #ADDITION FOR FAST_PITCH
         self.use_pitch = self.args.use_pitch
         self.use_aligner = self.args.use_aligner
+        self.compute_f0 = self.args.compute_f0
+        self.f0_cache_path=self.f0_cache_path
 
         self.text_encoder = TextEncoder(
             self.args.num_chars,
@@ -1826,6 +1828,8 @@ class VitsPitch(BaseTTS):
                 verbose=verbose,
                 tokenizer=self.tokenizer,
                 start_by_longest=config.start_by_longest,
+                compute_f0=self.compute_f0,
+                f0_cache_path=self.f0_cache_path
             )
 
             # wait all the DDP process to be ready
