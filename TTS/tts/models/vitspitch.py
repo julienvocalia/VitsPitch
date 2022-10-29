@@ -35,6 +35,8 @@ from TTS.tts.utils.visual import plot_alignment
 #ADDITION FOR FAST_PITCH
 from TTS.tts.utils.visual import plot_avg_pitch
 from TTS.tts.layers.generic.aligner import AlignmentNetwork
+from TTS.tts.utils.data import prepare_data,prepare_tensor
+
 
 from TTS.utils.io import load_fsspec
 from TTS.utils.samplers import BucketBatchSampler
@@ -351,6 +353,22 @@ class VitsPitchDataset(TTSDataset):
 
             wav = batch["wav"][i]
             wav_padded[i, :, : wav.size(1)] = torch.FloatTensor(wav)
+        
+        #ADDITION FOR FAST_PITCH
+        # compute features
+        mel = [self.ap.melspectrogram(np.asarray(w, dtype=np.float32)).astype("float32") for w in batch["wav"]]
+        # PAD features with longest instance
+        mel = prepare_tensor(mel, self.outputs_per_step)
+        # B x D x T --> B x T x D
+        mel = mel.transpose(0, 2, 1)
+        mel = torch.FloatTensor(mel).contiguous()   
+        # format F0
+        if self.compute_f0:
+            pitch = prepare_data(batch["pitch"])
+            assert mel.shape[1] == pitch.shape[1], f"[!] {mel.shape} vs {pitch.shape}"
+            pitch = torch.FloatTensor(pitch)[:, None, :].contiguous()  # B x 1 xT
+        else:
+            pitch = None
 
         return {
             "tokens": token_padded,
@@ -1828,8 +1846,10 @@ class VitsPitch(BaseTTS):
                 verbose=verbose,
                 tokenizer=self.tokenizer,
                 start_by_longest=config.start_by_longest,
+                #ADDITION FOR FAST_PITCH
                 compute_f0=self.compute_f0,
-                f0_cache_path=self.f0_cache_path
+                f0_cache_path=self.f0_cache_path,
+                ap=self.ap
             )
 
             # wait all the DDP process to be ready
