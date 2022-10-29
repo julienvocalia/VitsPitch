@@ -286,6 +286,8 @@ class VitsPitchDataset(TTSDataset):
             return self.__getitem__(self.rescue_item_idx)
             
         #ADDITION FOR FAST_PITCH
+        #specific format of wav
+        wav_pitch = np.asarray(self.load_wav(item["audio_file"]), dtype=np.float32)
         # get f0 values
         f0 = None
         if self.compute_f0:
@@ -302,6 +304,7 @@ class VitsPitchDataset(TTSDataset):
             "audio_unique_name": item["audio_unique_name"],
             #ADDITION FOR FAST_PITCH
             "pitch": f0,
+            "wav_pitch":wav_pitch
         }
 
     @property
@@ -358,7 +361,8 @@ class VitsPitchDataset(TTSDataset):
         
         #ADDITION FOR FAST_PITCH
         # compute features
-        mel = [self.ap.melspectrogram(np.asarray(w, dtype=np.float32)).astype("float32") for w in batch["wav"]]
+        #mel = [self.ap.melspectrogram(np.asarray(w, dtype=np.float32)).astype("float32") for w in batch["wav"]]
+        mel = [self.ap.melspectrogram(w).astype("float32") for w in batch["wav_pitch"]]
         # PAD features with longest instance
         mel = prepare_tensor(mel, self.outputs_per_step)
         # B x D x T --> B x T x D
