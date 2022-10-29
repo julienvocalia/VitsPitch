@@ -225,6 +225,8 @@ class VitsPitchAudioConfig(Coqpit):
     num_mels: int = 80
     mel_fmin: int = 0
     mel_fmax: int = None
+    trim_db:int = None
+    do_trim_silence:bool = False
 
 
 ##############################
