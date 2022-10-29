@@ -389,7 +389,7 @@ class VitsPitchDataset(TTSDataset):
             "raw_text": batch["raw_text"],
             "audio_unique_names": batch["audio_unique_name"],
             #ADDITION FOR FAST_PITCH
-            "pitch" : batch["pitch"]
+            "pitch" : pitch
         }
 
 
