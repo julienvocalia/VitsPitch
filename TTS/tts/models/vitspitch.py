@@ -210,7 +210,13 @@ def wav_to_mel(y, n_fft, num_mels, sample_rate, hop_length, win_length, fmin, fm
     spec = amp_to_db(spec)
     return spec
 
-
+#UPDATE PITCHTOVITS HERE
+def wav_pitch_to_vits(wav_pitch):
+    if isinstance(wav_pitch, list):
+        return [torch.from_numpy(w)[None,:] for w in wav_pitch]
+    else:
+        return torch.from_numpy(wav_pitch)[None,:]
+        
 #############################
 # CONFIGS
 #############################
@@ -278,16 +284,18 @@ class VitsPitchDataset(TTSDataset):
 
         token_ids = self.get_token_ids(idx, item["text"])
 
-        # after phonemization the text length may change
-        # this is a shameful 🤭 hack to prevent longer phonemes
-        # TODO: find a better fix
-        if len(token_ids) > self.max_text_len or wav.shape[1] < self.min_audio_len:
-            self.rescue_item_idx += 1
-            return self.__getitem__(self.rescue_item_idx)
-            
         #ADDITION FOR FAST_PITCH
         #specific format of wav
         wav_pitch = np.asarray(self.load_wav(item["audio_file"]), dtype=np.float32)
+
+
+        # after phonemization the text length may change
+        # this is a shameful 🤭 hack to prevent longer phonemes
+        # TODO: find a better fix
+        if len(token_ids) > self.max_text_len or wav_pitch_to_vits(wav_pitch).shape[1] < self.min_audio_len:
+            self.rescue_item_idx += 1
+            return self.__getitem__(self.rescue_item_idx)
+            
         # get f0 values
         f0 = None
         if self.compute_f0:
@@ -297,13 +305,13 @@ class VitsPitchDataset(TTSDataset):
             "raw_text": raw_text,
             "token_ids": token_ids,
             "token_len": len(token_ids),
-            "wav": wav,
             "wav_file": wav_filename,
             "speaker_name": item["speaker_name"],
             "language_name": item["language"],
             "audio_unique_name": item["audio_unique_name"],
             #ADDITION FOR FAST_PITCH
             "pitch": f0,
+            #"wav": wav,
             "wav_pitch":wav_pitch
         }
 
@@ -336,14 +344,16 @@ class VitsPitchDataset(TTSDataset):
         batch = {k: [dic[k] for dic in batch] for k in batch[0]}
 
         _, ids_sorted_decreasing = torch.sort(
-            torch.LongTensor([x.size(1) for x in batch["wav"]]), dim=0, descending=True
+            #UPDATE PITCHTOVITS
+            torch.LongTensor([x.size(1) for x in wav_pitch_to_vits(batch["wav_pitch"])]), dim=0, descending=True
         )
 
         max_text_len = max([len(x) for x in batch["token_ids"]])
         token_lens = torch.LongTensor(batch["token_len"])
         token_rel_lens = token_lens / token_lens.max()
 
-        wav_lens = [w.shape[1] for w in batch["wav"]]
+        #UPDATE PITCHTOVITS
+        wav_lens = [w.shape[1] for w in wav_pitch_to_vits(batch["wav_pitch"])]
         wav_lens = torch.LongTensor(wav_lens)
         wav_lens_max = torch.max(wav_lens)
         wav_rel_lens = wav_lens / wav_lens_max
@@ -356,7 +366,8 @@ class VitsPitchDataset(TTSDataset):
             token_ids = batch["token_ids"][i]
             token_padded[i, : batch["token_len"][i]] = torch.LongTensor(token_ids)
 
-            wav = batch["wav"][i]
+            #UPDATE PITCHTOVITS
+            wav = wav_pitch_to_vits(batch["wav_pitch"])[i]
             wav_padded[i, :, : wav.size(1)] = torch.FloatTensor(wav)
         
         #ADDITION FOR FAST_PITCH
