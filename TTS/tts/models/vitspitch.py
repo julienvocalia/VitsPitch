@@ -661,7 +661,7 @@ class VitsPitchArgs(Coqpit):
     pitch_predictor_kernel_size: int = 3
     pitch_predictor_dropout_p: float = 0.1
     pitch_embedding_kernel_size: int = 3
-    aligner_out_channels=325
+    aligner_out_channels=311
     aligner_hidden_channels=192
     compute_f0: bool = True
     f0_cache_path: str = None
