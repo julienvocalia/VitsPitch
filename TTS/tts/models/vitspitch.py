@@ -1510,8 +1510,6 @@ class VitsPitch(BaseTTS):
                 loss_dict = criterion[optimizer_idx](
                     scores_disc_real,
                     scores_disc_fake,
-                    #ADDITION FOR FAST_PITCH
-                    dur_target=durations,
                 )
             return outputs, loss_dict
 
