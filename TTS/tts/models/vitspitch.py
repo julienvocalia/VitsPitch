@@ -1464,6 +1464,8 @@ class VitsPitch(BaseTTS):
         """
 
         spec_lens = batch["spec_lens"]
+        #ADDITION FOR FAST_PITCH
+        token_lenghts = batch["token_lens"]
 
         if optimizer_idx == 0:
             tokens = batch["tokens"]
@@ -1566,6 +1568,7 @@ class VitsPitch(BaseTTS):
                     pitch_target=self.model_outputs_cache["pitch_avg_gt"] if self.use_pitch else None,
                     dur_target=self.model_outputs_cache["o_alignment_dur"] if self.use_aligner else None,
                     alignment_logprob=self.model_outputs_cache["alignment_logprob"] if self.use_aligner else None,
+                    input_lens=token_lenghts,
                 )
             #ADDITION FOR FAST_PITCH
             # compute duration error

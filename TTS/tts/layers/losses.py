@@ -826,6 +826,7 @@ class VitsPitchGeneratorLoss(nn.Module):
         pitch_target,
         dur_target,
         alignment_logprob,
+        input_lens=None
         use_speaker_encoder_as_loss=False,
         gt_spk_emb=None,
         syn_spk_emb=None,
