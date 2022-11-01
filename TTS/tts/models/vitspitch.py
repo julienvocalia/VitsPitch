@@ -1286,6 +1286,7 @@ class VitsPitch(BaseTTS):
                 "slice_ids": slice_ids,
                 #ADDITION FOR FAST_PITCH
                 "o_alignment_dur": o_alignment_dur,
+                "alignment_logprob": alignment_logprob,
                 "pitch_avg": o_pitch,
                 "pitch_avg_gt": avg_pitch,
             }
@@ -1565,7 +1566,14 @@ class VitsPitch(BaseTTS):
                     #ADDITION FOR FAST_PITCH
                     pitch_output=self.model_outputs_cache["pitch_avg"] if self.use_pitch else None,
                     pitch_target=self.model_outputs_cache["pitch_avg_gt"] if self.use_pitch else None,
+                    dur_target=self.model_outputs_cache["o_alignment_dur"] if self.use_aligner else None,
+                    alignment_logprob=self.model_outputs_cache["alignment_logprob"] if self.use_aligner else None,
                 )
+            #ADDITION FOR FAST_PITCH
+            # compute duration error
+            durations_pred = self.model_outputs_cache["durations"]
+            duration_error = torch.abs(self.model_outputs_cache["o_alignment_dur"] - durations_pred).sum() / text_lengths.sum()
+            loss_dict["duration_error"] = duration_error
 
             return self.model_outputs_cache, loss_dict
 

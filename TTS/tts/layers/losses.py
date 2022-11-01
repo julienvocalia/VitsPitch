@@ -824,6 +824,8 @@ class VitsPitchGeneratorLoss(nn.Module):
         #addition for FAST_PITCH
         pitch_output,
         pitch_target,
+        dur_target,
+        alignment_logprob,
         use_speaker_encoder_as_loss=False,
         gt_spk_emb=None,
         syn_spk_emb=None,
