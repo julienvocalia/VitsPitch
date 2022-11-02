@@ -1343,8 +1343,10 @@ class VitsPitch(BaseTTS):
         if self.args.use_language_embedding and lid is not None:
             lang_emb = self.emb_l(lid).unsqueeze(-1)
 
+        #ADDITION FOR FAST_PITCH
         #Text encoding
-        x, m_p, logs_p, x_mask = self.text_encoder(x, x_lengths, lang_emb=lang_emb)
+        #x, m_p, logs_p, x_mask = self.text_encoder(x, x_lengths, lang_emb=lang_emb)
+        x, m_p, logs_p, x_mask, x_emb = self.text_encoder(x, x_lengths, lang_emb=lang_emb)
         
         #ADDITION FOR FAST_PITCH
         # pitch predictor pass
