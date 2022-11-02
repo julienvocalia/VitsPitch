@@ -2,7 +2,7 @@ from dataclasses import dataclass, field
 from typing import List
 
 from TTS.tts.configs.shared_configs import BaseTTSConfig
-from TTS.tts.models.vitspitch import VitsPitchArgs,VitsPitchAudioConfig
+from TTS.tts.models.vits_pitch import VitsPitchArgs,VitsPitchAudioConfig
 
 @dataclass
 class VitsPitchConfig(BaseTTSConfig):
