@@ -111,11 +111,11 @@ class VitsPitchConfig(BaseTTSConfig):
 
     Example:
 
-        >>> from TTS.tts.configs.vitspitch_config import VitsPitchConfig
+        >>> from TTS.tts.configs.vits_pitch_config import VitsPitchConfig
         >>> config = VitsPitchConfig()
     """
 
-    model: str = "vitspitch"
+    model: str = "vits_pitch"
     # model specific params
     model_args: VitsPitchArgs = field(default_factory=VitsPitchArgs)
     audio: VitsPitchAudioConfig = VitsPitchAudioConfig()
