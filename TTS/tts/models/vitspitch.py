@@ -374,6 +374,8 @@ class VitsPitchDataset(TTSDataset):
         # compute features
         #mel = [self.ap.melspectrogram(np.asarray(w, dtype=np.float32)).astype("float32") for w in batch["wav"]]
         mel = [self.ap.melspectrogram(w).astype("float32") for w in batch["wav_pitch"]]
+        mel_lengths = [m.shape[1] for m in mel]
+        mel_lengths = torch.LongTensor(mel_lengths)
         # PAD features with longest instance
         mel = prepare_tensor(mel, self.outputs_per_step)
         # B x D x T --> B x T x D
@@ -401,6 +403,8 @@ class VitsPitchDataset(TTSDataset):
             "audio_unique_names": batch["audio_unique_name"],
             #ADDITION FOR FAST_PITCH
             "pitch" : pitch
+            "mel_input" : mel,
+            "mel_lengths":mel_lengths
         }
 
 
@@ -672,7 +676,7 @@ class VitsPitchArgs(Coqpit):
     pitch_predictor_kernel_size: int = 3
     pitch_predictor_dropout_p: float = 0.1
     pitch_embedding_kernel_size: int = 3
-    aligner_out_channels=311
+    aligner_out_channels=80
     aligner_hidden_channels=192
     compute_f0: bool = True
     f0_cache_path: str = None
@@ -1151,6 +1155,8 @@ class VitsPitch(BaseTTS):
         #ADDITION FOR FAST_PITCH
         #dr: torch.IntTensor = None,
         pitch: torch.FloatTensor = None,
+        mel_input: torch.FloatTensor = None,
+        mel_lens: torch.tensor = None,
         
         aux_input={"d_vectors": None, "speaker_ids": None, "language_ids": None},
     ) -> Dict:
@@ -1212,9 +1218,9 @@ class VitsPitch(BaseTTS):
         #ADDITION FOR FAST_PITCH
         # duration calculation with generic aligner
         if self.use_aligner:
-            aligner_y_mask = torch.unsqueeze(sequence_mask(y_lengths, y.shape[1]), 1).float()
+            mel_mask = torch.unsqueeze(sequence_mask(mel_lens, mel_input.shape[1]), 1).float()
             o_alignment_dur, alignment_soft, alignment_logprob, alignment_mas = self._forward_aligner(
-                x_emb, y, x_mask, aligner_y_mask
+                x_emb, mel_input, x_mask, mel_mask
             )
             alignment_soft = alignment_soft.transpose(1, 2)
             alignment_mas = alignment_mas.transpose(1, 2)
@@ -1478,6 +1484,8 @@ class VitsPitch(BaseTTS):
             waveform = batch["waveform"]
             #ADDITION FOR FAST_PITCH
             pitch = batch["pitch"] if self.args.use_pitch else None
+            mel_input = batch["mel_input"]
+            mel_lens=batch["mel_lengths"]
             #durations = batch["durations"] if self.args.use_pitch else None
             
             # generator pass
@@ -1490,7 +1498,8 @@ class VitsPitch(BaseTTS):
                 #ADDITION FOR FAST_PITCH
                 #dr=durations,
                 pitch=pitch,
-                
+                mel_input=mel_input,
+                mel_lens=mel_lens,               
                 aux_input={"d_vectors": d_vectors, "speaker_ids": speaker_ids, "language_ids": language_ids},
             )
             
