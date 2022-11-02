@@ -1295,6 +1295,8 @@ class VitsPitch(BaseTTS):
                 "alignment_logprob": alignment_logprob,
                 "pitch_avg": o_pitch,
                 "pitch_avg_gt": avg_pitch,
+                "alignment_soft": alignment_soft,
+                "alignment_mas": alignment_mas,
             }
         )
         return outputs
@@ -1472,6 +1474,7 @@ class VitsPitch(BaseTTS):
         spec_lens = batch["spec_lens"]
         #ADDITION FOR FAST_PITCH
         token_lenghts = batch["token_lens"]
+        mel_lens=batch["mel_lengths"]
 
         if optimizer_idx == 0:
             tokens = batch["tokens"]
@@ -1485,7 +1488,6 @@ class VitsPitch(BaseTTS):
             #ADDITION FOR FAST_PITCH
             pitch = batch["pitch"] if self.args.use_pitch else None
             mel_input = batch["mel_input"]
-            mel_lens=batch["mel_lengths"]
             #durations = batch["durations"] if self.args.use_pitch else None
             
             # generator pass
@@ -1578,6 +1580,10 @@ class VitsPitch(BaseTTS):
                     dur_target=self.model_outputs_cache["o_alignment_dur"] if self.use_aligner else None,
                     alignment_logprob=self.model_outputs_cache["alignment_logprob"] if self.use_aligner else None,
                     input_lens=token_lenghts,
+                    alignment_hard=self.model_outputs_cache["alignment_mas"],
+                    alignment_soft=self.model_outputs_cache["alignment_soft"],
+                    binary_loss_weight=self.binary_loss_weight,
+                    decoder_output_lens=mel_lens,
                 )
             #ADDITION FOR FAST_PITCH
             # TODO : compute duration error ?
@@ -2032,7 +2038,11 @@ class VitsPitch(BaseTTS):
             )
         return VitsPitch(new_config, ap, tokenizer, speaker_manager, language_manager)
 
-
+    #ADDITION FOR FAST_PITCH
+    def on_train_step_start(self, trainer):
+        """Schedule binary loss weight."""
+        self.binary_loss_weight = min(trainer.epochs_done / self.config.binary_loss_warmup_epochs, 1.0) * 1.0
+        
 ##################################
 # VITS CHARACTERS
 ##################################

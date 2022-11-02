@@ -751,6 +751,10 @@ class VitsPitchGeneratorLoss(nn.Module):
         if c.model_args.use_pitch:
             self.pitch_loss = MSELossMasked(False)
             self.pitch_loss_alpha = c.pitch_loss_alpha
+        if c.model_args.use_aligner:
+            self.aligner_loss = ForwardSumLoss()
+            self.aligner_loss_alpha = c.aligner_loss_alpha
+        self.binary_alignment_loss_alpha = c.binary_align_loss_alpha
         
         self.stft = TorchSTFT(
             c.audio.fft_size,
@@ -808,6 +812,15 @@ class VitsPitchGeneratorLoss(nn.Module):
     def cosine_similarity_loss(gt_spk_emb, syn_spk_emb):
         return -torch.nn.functional.cosine_similarity(gt_spk_emb, syn_spk_emb).mean()
 
+    #ADDITION FOR FAST_PITCH
+    @staticmethod
+    def _binary_alignment_loss(alignment_hard, alignment_soft):
+        """Binary loss that forces soft alignments to match the hard alignments as
+        explained in `https://arxiv.org/pdf/2108.10447.pdf`.
+        """
+        log_sum = torch.log(torch.clamp(alignment_soft[alignment_hard == 1], min=1e-12)).sum()
+        return -log_sum / alignment_hard.sum()
+
     def forward(
         self,
         mel_slice,
@@ -826,6 +839,11 @@ class VitsPitchGeneratorLoss(nn.Module):
         pitch_target,
         dur_target,
         alignment_logprob,
+        alignment_hard=None,
+        alignment_soft=None,
+        binary_loss_weight=None,
+        decoder_output_lens=None,
+        
         input_lens=None,
         use_speaker_encoder_as_loss=False,
         gt_spk_emb=None,
@@ -865,6 +883,19 @@ class VitsPitchGeneratorLoss(nn.Module):
             pitch_loss = self.pitch_loss(pitch_output.transpose(1, 2), pitch_target.transpose(1, 2), input_lens)
             loss = loss + self.pitch_loss_alpha * pitch_loss
             return_dict["loss_pitch"] = self.pitch_loss_alpha * pitch_loss
+        if hasattr(self, "aligner_loss") and self.aligner_loss_alpha > 0:
+            aligner_loss = self.aligner_loss(alignment_logprob, input_lens, decoder_output_lens)
+            loss = loss + self.aligner_loss_alpha * aligner_loss
+            return_dict["loss_aligner"] = self.aligner_loss_alpha * aligner_loss
+        if self.binary_alignment_loss_alpha > 0 and alignment_hard is not None:
+            binary_alignment_loss = self._binary_alignment_loss(alignment_hard, alignment_soft)
+            loss = loss + self.binary_alignment_loss_alpha * binary_alignment_loss
+            if binary_loss_weight:
+                return_dict["loss_binary_alignment"] = (
+                    self.binary_alignment_loss_alpha * binary_alignment_loss * binary_loss_weight
+                )
+            else:
+                return_dict["loss_binary_alignment"] = self.binary_alignment_loss_alpha * binary_alignment_loss
 
         if use_speaker_encoder_as_loss:
             loss_se = self.cosine_similarity_loss(gt_spk_emb, syn_spk_emb) * self.spk_encoder_loss_alpha

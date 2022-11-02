@@ -99,7 +99,13 @@ class VitsPitchConfig(BaseTTSConfig):
             
         pitch_loss_alpha (float):
             Weight for the pitch predictor's loss. If set 0, disables the pitch predictor. Defaults to 1.0.
+        
+        binary_align_loss_alpha (float):
+            Weight for the binary loss. If set 0, disables the binary loss. Defaults to 1.0.
 
+        binary_loss_warmup_epochs (float):
+            Number of epochs to gradually increase the binary loss impact. Defaults to 150.
+            
     Note:
         Check :class:`TTS.tts.configs.shared_configs.BaseTTSConfig` for the inherited parameters.
 
@@ -141,6 +147,9 @@ class VitsPitchConfig(BaseTTSConfig):
     speaker_encoder_loss_alpha: float = 1.0
     #ADDITION FROM FAST_PITCH
     pitch_loss_alpha: float = 0.1
+    aligner_loss_alpha: float = 1.0
+    binary_align_loss_alpha: float = 0.1
+    binary_loss_warmup_epochs: int = 150
 
     # data loader params
     return_wav: bool = True
