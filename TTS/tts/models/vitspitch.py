@@ -210,7 +210,7 @@ def wav_to_mel(y, n_fft, num_mels, sample_rate, hop_length, win_length, fmin, fm
     spec = amp_to_db(spec)
     return spec
 
-#UPDATE PITCHTOVITS HERE
+#UPDATE PITCHTOVITS FOR FAST_PITCH
 def wav_pitch_to_vits(wav_pitch):
     if isinstance(wav_pitch, list):
         return [torch.from_numpy(w)[None,:] for w in wav_pitch]
@@ -1614,12 +1614,12 @@ class VitsPitch(BaseTTS):
         #ADDITION FOR FAST_PITCH
         # plot pitch figures
         if self.args.use_pitch:
-            pitch_avg = abs(outputs["pitch_avg_gt"][0, 0].data.cpu().numpy())
-            pitch_avg_hat = abs(outputs["pitch_avg"][0, 0].data.cpu().numpy())
-            chars = self.tokenizer.decode(batch["text_input"][0].data.cpu().numpy())
+            pitch_avg = abs(outputs[1]["pitch_avg_gt"][0, 0].data.cpu().numpy())
+            pitch_avg_hat = abs(outputs[1]["pitch_avg"][0, 0].data.cpu().numpy())
+            tokens = self.tokenizer.decode(batch["tokens"][0].data.cpu().numpy())
             pitch_figures = {
-                "pitch_ground_truth": plot_avg_pitch(pitch_avg, chars, output_fig=False),
-                "pitch_avg_predicted": plot_avg_pitch(pitch_avg_hat, chars, output_fig=False),
+                "pitch_ground_truth": plot_avg_pitch(pitch_avg, tokens, output_fig=False),
+                "pitch_avg_predicted": plot_avg_pitch(pitch_avg_hat, tokens, output_fig=False),
             }
             figures.update(pitch_figures)
             
