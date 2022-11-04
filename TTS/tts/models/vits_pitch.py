@@ -648,7 +648,8 @@ class VitsPitchArgs(Coqpit):
     num_speakers: int = 0
     speakers_file: str = None
     d_vector_file: str = None
-    speaker_embedding_channels: int = 256
+    #MODIFICATION FOR FAST_PITCH
+    speaker_embedding_channels: int = 192 #256
     use_d_vector_file: bool = False
     d_vector_dim: int = 0
     detach_dp_input: bool = True
@@ -814,7 +815,9 @@ class VitsPitch(BaseTTS):
         #ADDITION FOR FAST_PITCH
         if self.args.use_pitch:
             self.pitch_predictor = DurationPredictor(
-                self.args.hidden_channels + self.embedded_speaker_dim,
+            #MODIFICATION FOR FAST_PITCH
+                #self.args.hidden_channels + self.embedded_speaker_dim,
+                self.args.hidden_channels,
                 self.args.pitch_predictor_hidden_channels,
                 self.args.pitch_predictor_kernel_size,
                 self.args.pitch_predictor_dropout_p,
@@ -1055,6 +1058,8 @@ class VitsPitch(BaseTTS):
         x_mask: torch.IntTensor,
         pitch: torch.FloatTensor = None,
         dr: torch.IntTensor = None,
+        #ADDITION FOR MULTISPEAKERS
+        g: torch.FloatTensor = None
     ) -> Tuple[torch.FloatTensor, torch.FloatTensor]:
         """Pitch predictor forward pass.
 
@@ -1077,6 +1082,8 @@ class VitsPitch(BaseTTS):
             - pitch: :math:`(B, 1, T_{de})`
             - dr: :math:`(B, T_{en})`
         """
+        #we add the speaker vector to the output of the encoder before launching pitch predictor
+        o_en=o_en+g
         o_pitch = self.pitch_predictor(o_en, x_mask)
         if pitch is not None:
             avg_pitch = average_over_durations(pitch, dr)
@@ -1229,7 +1236,7 @@ class VitsPitch(BaseTTS):
         o_pitch = None
         avg_pitch = None
         if self.args.use_pitch:
-            o_pitch_emb, o_pitch, avg_pitch = self._forward_pitch_predictor(x, x_mask, pitch, dr)
+            o_pitch_emb, o_pitch, avg_pitch = self._forward_pitch_predictor(x, x_mask, pitch, dr,g=g)
             x = x + o_pitch_emb
 
         # posterior encoder
@@ -1352,7 +1359,7 @@ class VitsPitch(BaseTTS):
         # pitch predictor pass
         o_pitch = None
         if self.args.use_pitch:
-            o_pitch_emb, o_pitch = self._forward_pitch_predictor(x, x_mask)
+            o_pitch_emb, o_pitch = self._forward_pitch_predictor(x, x_mask,g=g)
             x = x + o_pitch_emb
 
         if durations is None:
