@@ -233,6 +233,15 @@ class VitsPitchAudioConfig(Coqpit):
     mel_fmax: int = None
     trim_db:int = None
     do_trim_silence:bool = False
+    #UPDATE FOR FAST_PITCH
+    #TODO make sure we can call those from train script
+    pitch_fmax: int = 640
+    pitch_fmin: int =1
+    min_level_db=-100,
+    power=1.5,
+    griffin_lim_iters=60,
+    symmetric_norm=True,
+    max_norm=4.0
 
 
 ##############################
