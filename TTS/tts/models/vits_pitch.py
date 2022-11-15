@@ -1932,7 +1932,7 @@ class VitsPitch(BaseTTS):
                 )
             else:
                 #workaround for multi GPUs (cf https://github.com/coqui-ai/TTS/issues/1986)
-                if num_gpus = 1 :
+                if num_gpus == 1 :
                     loader = DataLoader(
                         dataset,
                         batch_sampler=sampler,
