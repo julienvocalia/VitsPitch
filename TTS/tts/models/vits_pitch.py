@@ -1092,7 +1092,9 @@ class VitsPitch(BaseTTS):
             - dr: :math:`(B, T_{en})`
         """
         #we add the speaker vector to the output of the encoder before launching pitch predictor
-        o_en=o_en+g
+        #TODO : proper speaker embedding
+        if g is not None:
+            o_en=o_en+g
         o_pitch = self.pitch_predictor(o_en, x_mask)
         if pitch is not None:
             avg_pitch = average_over_durations(pitch, dr)
