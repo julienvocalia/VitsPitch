@@ -835,6 +835,8 @@ class VitsPitch(BaseTTS):
                 self.args.pitch_predictor_hidden_channels,
                 self.args.pitch_predictor_kernel_size,
                 self.args.pitch_predictor_dropout_p,
+                #addition for speaker embedding
+                cond_channels=self.embedded_speaker_dim,
             )
             self.pitch_emb = nn.Conv1d(
                 1,
@@ -1096,11 +1098,11 @@ class VitsPitch(BaseTTS):
             - pitch: :math:`(B, 1, T_{de})`
             - dr: :math:`(B, T_{en})`
         """
-        #we add the speaker vector to the output of the encoder before launching pitch predictor
-        #TODO : proper speaker embedding
-        if g is not None:
-            o_en=o_en+g
-        o_pitch = self.pitch_predictor(o_en, x_mask)
+        o_pitch=self.pitch_predictor(
+            o_en,
+            x_mask,
+            g=g.detach() if self.args.detach_dp_input and g is not None else g
+        )
         if pitch is not None:
             avg_pitch = average_over_durations(pitch, dr)
             o_pitch_emb = self.pitch_emb(avg_pitch)
