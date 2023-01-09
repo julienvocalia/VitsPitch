@@ -781,7 +781,9 @@ class VitsPitch(BaseTTS):
             kernel_size=self.args.kernel_size_flow,
             dilation_rate=self.args.dilation_rate_flow,
             num_layers=self.args.num_layers_flow,
-            cond_channels=self.embedded_speaker_dim,
+            #addition for pitch embedding in flow
+            #cond_channels=self.embedded_speaker_dim,
+            cond_channels=self.embedded_speaker_dim+self.args.hidden_channels,  #self.args.hidden_channels is the output dim of pitch emb
         )
 
         if self.args.use_sdp:
@@ -1250,18 +1252,22 @@ class VitsPitch(BaseTTS):
             alignment_soft = alignment_soft.transpose(1, 2)
             alignment_mas = alignment_mas.transpose(1, 2)
             dr = o_alignment_dur
-        # pitch predictor pass and addition
+        # pitch predictor pass 
         o_pitch = None
         avg_pitch = None
         if self.args.use_pitch:
             o_pitch_emb, o_pitch, avg_pitch = self._forward_pitch_predictor(x, x_mask, pitch, dr,g=g)
-            x = x + o_pitch_emb
+            #x = x + o_pitch_emb we no longer add the pitch here
 
         # posterior encoder
         z, m_q, logs_q, y_mask = self.posterior_encoder(y, y_lengths, g=g)
 
         # flow layers
-        z_p = self.flow(z, y_mask, g=g)
+        #we add a conditional input for the ResidualCouplingBlocks : the pitch
+        if self.args.use_pitch:
+            z_p = self.flow(z, y_mask, g=torch.cat(g,o_pitch_emb))
+        else:
+            z_p = self.flow(z, y_mask, g=g)
 
         # duration predictor
         outputs, attn = self.forward_mas(outputs, z_p, m_p, logs_p, x, x_mask, y_mask, g=g, lang_emb=lang_emb)
@@ -1378,7 +1384,7 @@ class VitsPitch(BaseTTS):
         o_pitch = None
         if self.args.use_pitch:
             o_pitch_emb, o_pitch = self._forward_pitch_predictor(x, x_mask,g=g)
-            x = x + o_pitch_emb
+            #x = x + o_pitch_emb #we no longer add the pitch here
 
         if durations is None:
             if self.args.use_sdp:
@@ -1410,7 +1416,12 @@ class VitsPitch(BaseTTS):
         logs_p = torch.matmul(attn.transpose(1, 2), logs_p.transpose(1, 2)).transpose(1, 2)
 
         z_p = m_p + torch.randn_like(m_p) * torch.exp(logs_p) * self.inference_noise_scale
-        z = self.flow(z_p, y_mask, g=g, reverse=True)
+        
+        #we add the pitch
+        if self.args.use_pitch:
+            z = self.flow(z_p, y_mask, g=torch.cat(g,o_pitch_emb), reverse=True)
+        else:
+            z = self.flow(z_p, y_mask, g=g, reverse=True)
 
         # upsampling if needed
         z, _, _, y_mask = self.upsampling_z(z, y_lengths=y_lengths, y_mask=y_mask)
