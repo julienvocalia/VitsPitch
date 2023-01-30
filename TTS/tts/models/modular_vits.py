@@ -695,6 +695,8 @@ class ModularVitsArgs(Coqpit):
     aligner_hidden_channels=192
     compute_f0: bool = True
     f0_cache_path: str = None
+    #ADDITION FOR MODULAR_VITS
+    training_phase: int = None
 
 
 class ModularVits(BaseTTS):

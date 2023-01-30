@@ -117,7 +117,7 @@ class ModularVitsConfig(BaseTTSConfig):
         >>> config = VitsPitchConfig()
     """
 
-    model: str = "vits_pitch"
+    model: str = "modular_vits"
     # model specific params
     model_args: ModularVitsArgs = field(default_factory=ModularVitsArgs)
     audio: ModularVitsAudioConfig = ModularVitsAudioConfig()
@@ -128,7 +128,7 @@ class ModularVitsConfig(BaseTTSConfig):
     f0_cache_path: str = None
     
     #ADDITION FOR MODULAR_VITS
-    training_phase:int = 0
+    training_phase:int = None
 
     # optimizer
     grad_clip: List[float] = field(default_factory=lambda: [1000, 1000])
