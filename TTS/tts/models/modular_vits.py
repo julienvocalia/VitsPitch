@@ -1181,9 +1181,10 @@ class ModularVits(BaseTTS):
         #dr: torch.IntTensor = None,
         pitch: torch.FloatTensor = None,
         mel_input: torch.FloatTensor = None,
-        mel_lens: torch.tensor = None,
-        
+        mel_lens: torch.tensor = None,  
         aux_input={"d_vectors": None, "speaker_ids": None, "language_ids": None},
+        #ADDITION FOR MODULAR_VITS
+        training_phase=None
     ) -> Dict:
         """Forward pass of the model.
 
@@ -1234,7 +1235,14 @@ class ModularVits(BaseTTS):
         lang_emb = None
         if self.args.use_language_embedding and lid is not None:
             lang_emb = self.emb_l(lid).unsqueeze(-1)
-            
+        if training_phase == 1:
+            print("training phase 1")
+        elif training_phase == 2:
+            print("training phase 2")
+        elif training_phase == 3:
+            print("training phase 3")
+        return outputs
+        
         #MODIFICATION FOR FAST_PITCH
         # Text Encoding
         #x, m_p, logs_p, x_mask = self.text_encoder(x, x_lengths, lang_emb=lang_emb)
@@ -1530,6 +1538,8 @@ class ModularVits(BaseTTS):
                 mel_input=mel_input,
                 mel_lens=mel_lens,               
                 aux_input={"d_vectors": d_vectors, "speaker_ids": speaker_ids, "language_ids": language_ids},
+                #ADDITION FOR MODULAR_VITS
+                traning_phase=self.training_phase
             )
             
             #ADDITION FOR FAST_PITCH
@@ -1553,7 +1563,9 @@ class ModularVits(BaseTTS):
                 )
             return outputs, loss_dict
 
-        if optimizer_idx == 1:
+        #ADDITION FOR MODULAR_VITS
+        #if optimizer_idx == 1:
+        if self.training_phase==2 and optimizer_idx == 1 :
             mel = batch["mel"]
 
             # compute melspec segment
@@ -1970,11 +1982,16 @@ class ModularVits(BaseTTS):
         # select generator parameters
         optimizer0 = get_optimizer(self.config.optimizer, self.config.optimizer_params, self.config.lr_disc, self.disc)
 
-        gen_parameters = chain(params for k, params in self.named_parameters() if not k.startswith("disc."))
-        optimizer1 = get_optimizer(
-            self.config.optimizer, self.config.optimizer_params, self.config.lr_gen, parameters=gen_parameters
-        )
-        return [optimizer0, optimizer1]
+        #MODIFICATION FOR MODULAR_VITS
+        #we only need the discriminator optimizer if we are on training phase 2
+        if self.training_phase == 2 :
+            gen_parameters = chain(params for k, params in self.named_parameters() if not k.startswith("disc."))
+            optimizer1 = get_optimizer(
+                self.config.optimizer, self.config.optimizer_params, self.config.lr_gen, parameters=gen_parameters
+            )
+            return [optimizer0, optimizer1]
+        else :
+            return [optimizer0]
 
     def get_lr(self) -> List:
         """Set the initial learning rates for each optimizer.

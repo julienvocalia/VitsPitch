@@ -105,7 +105,9 @@ class ModularVitsConfig(BaseTTSConfig):
 
         binary_loss_warmup_epochs (float):
             Number of epochs to gradually increase the binary loss impact. Defaults to 150.
-            
+
+        training_phase (int):
+            Phase of the modular traning            
     Note:
         Check :class:`TTS.tts.configs.shared_configs.BaseTTSConfig` for the inherited parameters.
 
@@ -124,6 +126,9 @@ class ModularVitsConfig(BaseTTSConfig):
     # dataset configs
     compute_f0: bool = True
     f0_cache_path: str = None
+    
+    #ADDITION FOR MODULAR_VITS
+    training_phase:int = 0
 
     # optimizer
     grad_clip: List[float] = field(default_factory=lambda: [1000, 1000])
