@@ -754,6 +754,8 @@ class ModularVits(BaseTTS):
         self.use_aligner = self.args.use_aligner
         self.compute_f0 = self.config.compute_f0
         self.f0_cache_path=self.config.f0_cache_path
+        #ADDITION FOR MODULAR_VITS
+        self.training_phase=self.config.training_phase
 
         self.text_encoder = TextEncoder(
             self.args.num_chars,
