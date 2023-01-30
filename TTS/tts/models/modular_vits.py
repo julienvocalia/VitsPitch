@@ -2015,8 +2015,13 @@ class ModularVits(BaseTTS):
             List: Schedulers, one for each optimizer.
         """
         scheduler_G = get_scheduler(self.config.lr_scheduler_gen, self.config.lr_scheduler_gen_params, optimizer[0])
-        scheduler_D = get_scheduler(self.config.lr_scheduler_disc, self.config.lr_scheduler_disc_params, optimizer[1])
-        return [scheduler_D, scheduler_G]
+        #MODIFICATION FOR MODULAR_VITS
+        #we only need the discriminator optimizer if we are on training phase 2
+        if self.training_phase == 2 :
+            scheduler_D = get_scheduler(self.config.lr_scheduler_disc, self.config.lr_scheduler_disc_params, optimizer[1])
+            return[scheduler_D,scheduler_G]
+        else:
+            return [scheduler_G]
 
     def get_criterion(self):
         """Get criterions for each optimizer. The index in the output list matches the optimizer idx used in
