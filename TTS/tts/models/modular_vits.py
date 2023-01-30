@@ -1543,7 +1543,7 @@ class ModularVits(BaseTTS):
                 mel_lens=mel_lens,               
                 aux_input={"d_vectors": d_vectors, "speaker_ids": speaker_ids, "language_ids": language_ids},
                 #ADDITION FOR MODULAR_VITS
-                traning_phase=self.training_phase
+                training_phase=self.training_phase
             )
             
             #ADDITION FOR FAST_PITCH
