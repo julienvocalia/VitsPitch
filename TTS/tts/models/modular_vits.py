@@ -1181,22 +1181,57 @@ class ModularVits(BaseTTS):
                     )  # [B, 1, T_dec_resampled]
 
         return z, spec_segment_size, slice_ids, y_mask
+    
+    #Modular_vits forward pass for the phase 1
+    def forward_phase_1(self,x,x_lengths,mel_input,mel_lens,aux_input)
+        sid, g, lid, _ = self._set_cond_input(aux_input)
+        # speaker embedding
+        if self.args.use_speaker_embedding and sid is not None:
+            g = self.emb_g(sid).unsqueeze(-1)  # [b, h, 1]
 
+        # language embedding
+        lang_emb = None
+        if self.args.use_language_embedding and lid is not None:
+            lang_emb = self.emb_l(lid).unsqueeze(-1)
+      
+        #Text Embedding for pitch aligner purpose only
+        x_mask, x_emb = self.text_embedder_pitch(x, x_lengths, lang_emb=lang_emb)
+            
+        # pitch duration calculation with generic aligner
+        if self.use_aligner:
+            mel_mask = torch.unsqueeze(sequence_mask(mel_lens, mel_input.shape[1]), 1).float()
+            o_alignment_dur, alignment_soft, alignment_logprob, alignment_mas = self._forward_aligner(
+                x_emb, mel_input, x_mask, mel_mask
+            )
+            alignment_soft = alignment_soft.transpose(1, 2)
+            alignment_mas = alignment_mas.transpose(1, 2)
+            dr = o_alignment_dur
+        else:
+            raise Exception("No aligner is used to compute pitch duration. Make sure use_aligner=True")
+        outputs={
+            "o_alignment_dur": o_alignment_dur,
+            "alignment_logprob": alignment_logprob,
+            "alignment_soft": alignment_soft,
+            "alignment_mas": alignment_mas,
+            }
+        return outputs        
+    
+    
     def forward(  # pylint: disable=dangerous-default-value
         self,
+        #ADDITION FOR MODULAR_VITS
+        training_phase:int
         x: torch.tensor,
         x_lengths: torch.tensor,
-        y: torch.tensor,
-        y_lengths: torch.tensor,
-        waveform: torch.tensor,
+        y: torch.tensor = None,
+        y_lengths: torch.tensor = None,
+        waveform: torch.tensor = None,
         #ADDITION FOR FAST_PITCH
         #dr: torch.IntTensor = None,
         pitch: torch.FloatTensor = None,
         mel_input: torch.FloatTensor = None,
         mel_lens: torch.tensor = None,  
         aux_input={"d_vectors": None, "speaker_ids": None, "language_ids": None},
-        #ADDITION FOR MODULAR_VITS
-        training_phase=None
     ) -> Dict:
         """Forward pass of the model.
 
@@ -1248,30 +1283,19 @@ class ModularVits(BaseTTS):
         if self.args.use_language_embedding and lid is not None:
             lang_emb = self.emb_l(lid).unsqueeze(-1)
         if training_phase == 1:
-            print("training phase 1")
-            #Text Embedding for pitch aligner purpose only
-            x_mask, x_emb = self.text_embedder_pitch(x, x_lengths, lang_emb=lang_emb)
-            
-            # pitch duration calculation with generic aligner
-            if self.use_aligner:
-                mel_mask = torch.unsqueeze(sequence_mask(mel_lens, mel_input.shape[1]), 1).float()
-                o_alignment_dur, alignment_soft, alignment_logprob, alignment_mas = self._forward_aligner(
-                    x_emb, mel_input, x_mask, mel_mask
-                )
-                alignment_soft = alignment_soft.transpose(1, 2)
-                alignment_mas = alignment_mas.transpose(1, 2)
-                dr = o_alignment_dur
-            outputs={
-                "o_alignment_dur": o_alignment_dur,
-                "alignment_logprob": alignment_logprob,
-                "alignment_soft": alignment_soft,
-                "alignment_mas": alignment_mas,
-                }
+            print("forward for phase 1")
+            return self._forward_phase_1(x,x_lengths,mel_input,mel_lens,lang_emb)
+
         elif training_phase == 2:
             print("training phase 2")
+            outputs={}
+            return outputs
+
+            #return will be done at 
         elif training_phase == 3:
             print("training phase 3")
-        return outputs
+            outputs={}
+            return outputs
         
         #MODIFICATION FOR FAST_PITCH
         # Text Encoding
@@ -1535,6 +1559,28 @@ class ModularVits(BaseTTS):
         Returns:
             Tuple[Dict, Dict]: Model ouputs and computed losses.
         """
+        
+        #PHASE 1 : PITCH ALIGNER
+        if self.training_phase==1:
+            print("training step phase 1")
+            #pitch aligner pass
+            outputs=self.forward_phase_1(
+                x=tokens,
+                x_lens=token_lengths,
+                mel_input=mel_input,
+                mel_lens=mel_lens,
+                aux_input={"d_vectors": d_vectors, "speaker_ids": speaker_ids, "language_ids": language_ids}
+            )
+            return outputs
+
+        
+        #PHASE 2 : CORE VITS
+        elif self.training_phase ==2:
+            print ("training step phase 2")
+        
+        #PHASE 3 : PITCH PREDICTOR
+        elif self.training_phase==3:
+            print("training step phase 3")
 
         spec_lens = batch["spec_lens"]
         #ADDITION FOR FAST_PITCH
@@ -1575,7 +1621,7 @@ class ModularVits(BaseTTS):
             #ADDITION FOR FAST_PITCH
             # use aligner's output as the duration target
             if self.use_aligner:
-                durations = outputs["o_alignment_dur"]
+                durations_pitch_aligner = outputs["o_alignment_dur"]
 
             # cache tensors for the generator pass
             self.model_outputs_cache = outputs  # pylint: disable=attribute-defined-outside-init
