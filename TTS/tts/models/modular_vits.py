@@ -1183,7 +1183,7 @@ class ModularVits(BaseTTS):
         return z, spec_segment_size, slice_ids, y_mask
     
     #Modular_vits forward pass for the phase 1
-    def forward_phase_1(self,x,x_lengths,mel_input,mel_lens,aux_input)
+    def forward_phase_1(self,x,x_lengths,mel_input,mel_lens,aux_input):
         sid, g, lid, _ = self._set_cond_input(aux_input)
         # speaker embedding
         if self.args.use_speaker_embedding and sid is not None:
@@ -1220,7 +1220,7 @@ class ModularVits(BaseTTS):
     def forward(  # pylint: disable=dangerous-default-value
         self,
         #ADDITION FOR MODULAR_VITS
-        training_phase:int
+        training_phase:int,
         x: torch.tensor,
         x_lengths: torch.tensor,
         y: torch.tensor = None,
@@ -1563,6 +1563,14 @@ class ModularVits(BaseTTS):
         #PHASE 1 : PITCH ALIGNER
         if self.training_phase==1:
             print("training step phase 1")
+            tokens = batch["tokens"]
+            token_lenghts = batch["token_lens"]
+            d_vectors = batch["d_vectors"]
+            speaker_ids = batch["speaker_ids"]
+            language_ids = batch["language_ids"]
+            mel_input = batch["mel_input"]
+            mel_lens=batch["mel_lengths"]
+           
             #pitch aligner pass
             outputs=self.forward_phase_1(
                 x=tokens,
