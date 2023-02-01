@@ -1563,23 +1563,45 @@ class ModularVits(BaseTTS):
         #PHASE 1 : PITCH ALIGNER
         if self.training_phase==1:
             print("training step phase 1")
-            tokens = batch["tokens"]
-            token_lengths = batch["token_lens"]
-            d_vectors = batch["d_vectors"]
-            speaker_ids = batch["speaker_ids"]
-            language_ids = batch["language_ids"]
-            mel_input = batch["mel_input"]
-            mel_lens=batch["mel_lengths"]
+            if optimizer_idx == 2:
+                print("optimizer_idx ==2")
+                tokens = batch["tokens"]
+                token_lengths = batch["token_lens"]
+                d_vectors = batch["d_vectors"]
+                speaker_ids = batch["speaker_ids"]
+                language_ids = batch["language_ids"]
+                mel_input = batch["mel_input"]
+                mel_lens=batch["mel_lengths"]
            
-            #pitch aligner pass
-            outputs=self.forward_phase_1(
-                x=tokens,
-                x_lengths=token_lengths,
-                mel_input=mel_input,
-                mel_lens=mel_lens,
-                aux_input={"d_vectors": d_vectors, "speaker_ids": speaker_ids, "language_ids": language_ids}
-            )
-            return outputs
+                #pitch aligner pass
+                outputs=self.forward_phase_1(
+                    x=tokens,
+                    x_lengths=token_lengths,
+                    mel_input=mel_input,
+                    mel_lens=mel_lens,
+                    aux_input={"d_vectors": d_vectors, "speaker_ids": speaker_ids, "language_ids": language_ids}
+                )
+                
+
+                #Loss computation adapted from forwardtts loss
+                with autocast(enabled=False):  # use float32 for the criterion
+                    loss_dict = criterion[optimizer_idx](
+                        decoder_output_lens=mel_lens,
+                        dur_output=outputs['o_alignment_dur'],
+                        input_lens=token_lengths,
+                        alignment_logprob=outputs['alignment_logprob'],
+                        alignment_hard=ouputs['alignment_mas'],
+                        alignment_soft=outputs['alignment_soft'],
+                        binary_loss_weight=None,
+                )          
+                return outputs, loss_dict
+            elif optimizer_idx == 0:
+                print("optimizer_idx ==0")
+            elif optimizer_idx == 1:
+                print("optimizer_idx ==1")
+            else:
+                raise RuntimeError("Calling for unknown optimizer_idx ",optimizer_idx)
+
 
         
         #PHASE 2 : CORE VITS
@@ -2065,18 +2087,13 @@ class ModularVits(BaseTTS):
         """
         # select generator parameters
         optimizer0 = get_optimizer(self.config.optimizer, self.config.optimizer_params, self.config.lr_disc, self.disc)
-
-        #MODIFICATION FOR MODULAR_VITS
-        #we only need the discriminator optimizer if we are on training phase 2
-        if self.training_phase == 2 :
-            gen_parameters = chain(params for k, params in self.named_parameters() if not k.startswith("disc."))
-            optimizer1 = get_optimizer(
-                self.config.optimizer, self.config.optimizer_params, self.config.lr_gen, parameters=gen_parameters
-            )
-            return [optimizer0, optimizer1]
-        else :
-            return [optimizer0]
-
+        
+        gen_parameters = chain(params for k, params in self.named_parameters() if not k.startswith("disc."))
+        optimizer1 = get_optimizer(
+            self.config.optimizer, self.config.optimizer_params, self.config.lr_gen, parameters=gen_parameters
+        )
+        return [optimizer0, optimizer1]
+        
     def get_lr(self) -> List:
         """Set the initial learning rates for each optimizer.
 
@@ -2110,6 +2127,8 @@ class ModularVits(BaseTTS):
             VitsDiscriminatorLoss,
             #UPDATE FOR FAST_PITCH
             VitsPitchGeneratorLoss,
+            #UPDATE FOR MODULAR_VITS
+            PitchAlignerLoss,
         )
 
         #UPDATE FOR FAST_PITCH
