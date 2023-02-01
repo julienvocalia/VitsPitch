@@ -1564,7 +1564,7 @@ class ModularVits(BaseTTS):
         if self.training_phase==1:
             print("training step phase 1")
             tokens = batch["tokens"]
-            token_lenghts = batch["token_lens"]
+            token_lengths = batch["token_lens"]
             d_vectors = batch["d_vectors"]
             speaker_ids = batch["speaker_ids"]
             language_ids = batch["language_ids"]
@@ -1574,7 +1574,7 @@ class ModularVits(BaseTTS):
             #pitch aligner pass
             outputs=self.forward_phase_1(
                 x=tokens,
-                x_lens=token_lengths,
+                x_lengths=token_lengths,
                 mel_input=mel_input,
                 mel_lens=mel_lens,
                 aux_input={"d_vectors": d_vectors, "speaker_ids": speaker_ids, "language_ids": language_ids}
