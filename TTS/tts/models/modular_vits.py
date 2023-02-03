@@ -2036,6 +2036,7 @@ class ModularVits(BaseTTS):
                 compute_f0=self.compute_f0,
                 f0_cache_path=self.f0_cache_path,
                 ap=self.ap
+                training_phase=self.training_phase
             )
 
             # wait all the DDP process to be ready
