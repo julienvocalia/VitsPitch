@@ -1558,8 +1558,6 @@ class ModularVits(BaseTTS):
         Returns:
             Tuple[Dict, Dict]: Model ouputs and computed losses.
         """
-        print("training step:",str(self.training_phase))
-        print("optimizer_idx:",str(optimizer_idx))
         #PHASE 1 : PITCH ALIGNER
         if self.training_phase==1:
             if optimizer_idx == 0:
@@ -1580,7 +1578,6 @@ class ModularVits(BaseTTS):
                     mel_lens=mel_lens,
                     aux_input={"d_vectors": d_vectors, "speaker_ids": speaker_ids, "language_ids": language_ids}
                 )
-                print("forward_phase_1 done")
                 
 
                 #Loss computation adapted from forwardtts loss
@@ -2038,7 +2035,7 @@ class ModularVits(BaseTTS):
                 #ADDITION FOR FAST_PITCH
                 compute_f0=self.compute_f0,
                 f0_cache_path=self.f0_cache_path,
-                ap=self.ap
+                ap=self.ap,
                 training_phase=self.training_phase
             )
 
