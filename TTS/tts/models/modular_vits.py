@@ -398,7 +398,7 @@ class ModularVitsDataset(TTSDataset):
         mel = mel.transpose(0, 2, 1)
         mel = torch.FloatTensor(mel).contiguous()   
         # format F0
-        if self.compute_f0:
+        if self.compute_f0 and self.training_phase!=1:
             pitch = prepare_data(batch["pitch"])
             assert mel.shape[1] == pitch.shape[1], f"[!] {mel.shape} vs {pitch.shape}"
             pitch = torch.FloatTensor(pitch)[:, None, :].contiguous()  # B x 1 xT
@@ -1283,7 +1283,6 @@ class ModularVits(BaseTTS):
         if self.args.use_language_embedding and lid is not None:
             lang_emb = self.emb_l(lid).unsqueeze(-1)
         if training_phase == 1:
-            print("forward for phase 1")
             return self._forward_phase_1(x,x_lengths,mel_input,mel_lens,lang_emb)
 
         elif training_phase == 2:
@@ -1572,7 +1571,6 @@ class ModularVits(BaseTTS):
                 language_ids = batch["language_ids"]
                 mel_input = batch["mel_input"]
                 mel_lens=batch["mel_lengths"]
-                print("Batch loading done")
            
                 #pitch aligner pass
                 outputs=self.forward_phase_1(
@@ -1587,7 +1585,7 @@ class ModularVits(BaseTTS):
 
                 #Loss computation adapted from forwardtts loss
                 with autocast(enabled=False):  # use float32 for the criterion
-                    loss_dict = criterion[2](
+                    loss_dict = criterion[optimizer_idx](
                         decoder_output_lens=mel_lens,
                         input_lens=token_lengths,
                         alignment_logprob=outputs['alignment_logprob'],
@@ -1595,7 +1593,6 @@ class ModularVits(BaseTTS):
                         alignment_soft=outputs['alignment_soft'],
                         binary_loss_weight=None,
                 )
-                print("losses computed")
                 
                 return outputs, loss_dict
             elif optimizer_idx == 0:
@@ -2089,7 +2086,7 @@ class ModularVits(BaseTTS):
             List: optimizers.
         """
         if self.training_phase==1:
-            printing("Using the same optimizer as vits generator")
+            print("Using the same optimizer as vits generator")
             gen_parameters = chain(params for k, params in self.named_parameters() if not k.startswith("disc."))
             pitchaligner_optimizer = get_optimizer(self.config.optimizer, self.config.optimizer_params,  self.config.lr_gen, parameters=gen_parameters)
             return [pitchaligner_optimizer]

@@ -65,6 +65,7 @@ class TTSDataset(Dataset):
         use_noise_augment: bool = False,
         start_by_longest: bool = False,
         verbose: bool = False,
+        training_phase: int = None
     ):
         """Generic 📂 data loader for `tts` models. It is configurable for different outputs and needs.
 
@@ -158,6 +159,7 @@ class TTSDataset(Dataset):
 
         if self.verbose:
             self.print_logs()
+        self.training_phase=training_phase
 
     @property
     def lengths(self):
@@ -365,6 +367,7 @@ class TTSDataset(Dataset):
             print(" | > Avg audio length: {}".format(np.mean(audio_lengths)))
             print(f" | > Num. instances discarded samples: {len(ignore_idx)}")
             print(" | > Batch group size: {}.".format(self.batch_group_size))
+            print(" | > Traiing Phase: {}.".format(self.training_phase))
 
     @staticmethod
     def _sort_batch(batch, text_lengths):
