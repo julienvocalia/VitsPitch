@@ -2089,7 +2089,8 @@ class ModularVits(BaseTTS):
             List: optimizers.
         """
         if self.training_phase==1:
-            print("WE NEED TO ADD AN OPTIMIZER for training phase 1 HERE")
+            pitchaligner_optimizer = get_optimizer(self.config.optimizer, self.config.optimizer_params, self.config.lr_gen, self.gen)
+            return [pitchaligner_optimizer]
         elif self.training_phase==2:
             print("WE NEED TO ADD AN OPTIMIZER for traning phase 2 HERE")
         elif self.training_phase==3:
