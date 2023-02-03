@@ -1560,7 +1560,7 @@ class ModularVits(BaseTTS):
             Tuple[Dict, Dict]: Model ouputs and computed losses.
         """
         print("training step:",str(self.training_phase))
-        print("optimizer_idx:"str(optimizer_idx))
+        print("optimizer_idx:",str(optimizer_idx))
         #PHASE 1 : PITCH ALIGNER
         if self.training_phase==1:
             if optimizer_idx == 0:
@@ -2139,7 +2139,7 @@ class ModularVits(BaseTTS):
         #UPDATE FOR FAST_PITCH
         else:
             print("launching the two usual suspects as criterions")
-            return [VitsDiscriminatorLoss(self.config), VitsPitchGeneratorLoss(self.config))]
+            return [VitsDiscriminatorLoss(self.config), VitsPitchGeneratorLoss(self.config)]
 
     def load_checkpoint(
         self,
