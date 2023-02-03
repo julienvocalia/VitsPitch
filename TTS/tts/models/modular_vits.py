@@ -1786,9 +1786,12 @@ class ModularVits(BaseTTS):
         Returns:
             Tuple[Dict, np.ndarray]: training plots and output waveform.
         """
-        figures, audios = self._log(self.ap, batch, outputs, "train")
-        logger.train_figures(steps, figures)
-        logger.train_audios(steps, audios, self.ap.sample_rate)
+        if self.training_phase==1:
+            print("nothing to plot in phase 1")
+        else:
+            figures, audios = self._log(self.ap, batch, outputs, "train")
+            logger.train_figures(steps, figures)
+            logger.train_audios(steps, audios, self.ap.sample_rate)
 
     @torch.no_grad()
     def eval_step(self, batch: dict, criterion: nn.Module, optimizer_idx: int):
