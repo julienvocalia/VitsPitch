@@ -1559,12 +1559,12 @@ class ModularVits(BaseTTS):
         Returns:
             Tuple[Dict, Dict]: Model ouputs and computed losses.
         """
-        
+        print("training step:",str(self.training_phase))
+        print("optimizer_idx:"str(optimizer_idx))
         #PHASE 1 : PITCH ALIGNER
         if self.training_phase==1:
-            print("training step phase 1")
-            if optimizer_idx == 0 or optimizer_idx == 1 or optimizer_idx == 2:
-                print("optimizer_idx ==,"str(optimizer_idx))
+            if optimizer_idx == 0:
+                #loading batch
                 tokens = batch["tokens"]
                 token_lengths = batch["token_lens"]
                 d_vectors = batch["d_vectors"]
@@ -1572,6 +1572,7 @@ class ModularVits(BaseTTS):
                 language_ids = batch["language_ids"]
                 mel_input = batch["mel_input"]
                 mel_lens=batch["mel_lengths"]
+                print("Batch loading done")
            
                 #pitch aligner pass
                 outputs=self.forward_phase_1(
@@ -1581,19 +1582,21 @@ class ModularVits(BaseTTS):
                     mel_lens=mel_lens,
                     aux_input={"d_vectors": d_vectors, "speaker_ids": speaker_ids, "language_ids": language_ids}
                 )
+                print("forward_phase_1 done")
                 
 
                 #Loss computation adapted from forwardtts loss
                 with autocast(enabled=False):  # use float32 for the criterion
                     loss_dict = criterion[2](
                         decoder_output_lens=mel_lens,
-                        dur_output=outputs['o_alignment_dur'],
                         input_lens=token_lengths,
                         alignment_logprob=outputs['alignment_logprob'],
                         alignment_hard=outputs['alignment_mas'],
                         alignment_soft=outputs['alignment_soft'],
                         binary_loss_weight=None,
-                )          
+                )
+                print("losses computed")
+                
                 return outputs, loss_dict
             elif optimizer_idx == 0:
                 print("optimizer_idx ==0")
@@ -2085,13 +2088,12 @@ class ModularVits(BaseTTS):
         Returns:
             List: optimizers.
         """
-        # select generator parameters
-        optimizer0 = get_optimizer(self.config.optimizer, self.config.optimizer_params, self.config.lr_disc, self.disc)
-        
-        gen_parameters = chain(params for k, params in self.named_parameters() if not k.startswith("disc."))
-        optimizer1 = get_optimizer(
-            self.config.optimizer, self.config.optimizer_params, self.config.lr_gen, parameters=gen_parameters
-        )
+        if self.training_phase==1:
+            print("WE NEED TO ADD AN OPTIMIZER for training phase 1 HERE")
+        elif self.training_phase==2:
+            print("WE NEED TO ADD AN OPTIMIZER for traning phase 2 HERE")
+        elif self.training_phase==3:
+            print("WE NEED TO ADD AN OPTIMIZER for traning phase 3 HERE")
         return [optimizer0, optimizer1]
         
     def get_lr(self) -> List:
@@ -2130,9 +2132,14 @@ class ModularVits(BaseTTS):
             #UPDATE FOR MODULAR_VITS
             PitchAlignerLoss,
         )
+        if self.training_phase==1:
+            print("Launching pitchalignerloss as criterion")
+            return [PitchAlignerLoss(self.config)]
 
         #UPDATE FOR FAST_PITCH
-        return [VitsDiscriminatorLoss(self.config), VitsPitchGeneratorLoss(self.config),PitchAlignerLoss(self.config)]
+        else:
+            print("launching the two usual suspects as criterions")
+            return [VitsDiscriminatorLoss(self.config), VitsPitchGeneratorLoss(self.config))]
 
     def load_checkpoint(
         self,
