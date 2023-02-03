@@ -1564,7 +1564,7 @@ class ModularVits(BaseTTS):
         if self.training_phase==1:
             print("training step phase 1")
             if optimizer_idx == 0 or optimizer_idx == 1 or optimizer_idx == 2:
-                print("optimizer_idx ==2")
+                print("optimizer_idx ==,"str(optimizer_idx))
                 tokens = batch["tokens"]
                 token_lengths = batch["token_lens"]
                 d_vectors = batch["d_vectors"]
@@ -1585,7 +1585,7 @@ class ModularVits(BaseTTS):
 
                 #Loss computation adapted from forwardtts loss
                 with autocast(enabled=False):  # use float32 for the criterion
-                    loss_dict = criterion[optimizer_idx](
+                    loss_dict = criterion[2](
                         decoder_output_lens=mel_lens,
                         dur_output=outputs['o_alignment_dur'],
                         input_lens=token_lengths,
