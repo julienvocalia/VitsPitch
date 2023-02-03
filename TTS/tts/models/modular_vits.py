@@ -1795,9 +1795,12 @@ class ModularVits(BaseTTS):
         return self.train_step(batch, criterion, optimizer_idx)
 
     def eval_log(self, batch: dict, outputs: dict, logger: "Logger", assets: dict, steps: int) -> None:
-        figures, audios = self._log(self.ap, batch, outputs, "eval")
-        logger.eval_figures(steps, figures)
-        logger.eval_audios(steps, audios, self.ap.sample_rate)
+        if self.training_phase==1:
+            print("No figures or audio to log in phase 1")
+        else:
+            figures, audios = self._log(self.ap, batch, outputs, "eval")
+            logger.eval_figures(steps, figures)
+            logger.eval_audios(steps, audios, self.ap.sample_rate)
 
     def get_aux_input_from_test_sentences(self, sentence_info):
         if hasattr(self.config, "model_args"):
