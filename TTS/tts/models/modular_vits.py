@@ -1563,7 +1563,7 @@ class ModularVits(BaseTTS):
         #PHASE 1 : PITCH ALIGNER
         if self.training_phase==1:
             print("training step phase 1")
-            if optimizer_idx == 2:
+            if optimizer_idx == 0 or optimizer_idx == 1 or optimizer_idx == 2:
                 print("optimizer_idx ==2")
                 tokens = batch["tokens"]
                 token_lengths = batch["token_lens"]
@@ -1590,7 +1590,7 @@ class ModularVits(BaseTTS):
                         dur_output=outputs['o_alignment_dur'],
                         input_lens=token_lengths,
                         alignment_logprob=outputs['alignment_logprob'],
-                        alignment_hard=ouputs['alignment_mas'],
+                        alignment_hard=outputs['alignment_mas'],
                         alignment_soft=outputs['alignment_soft'],
                         binary_loss_weight=None,
                 )          
@@ -2132,7 +2132,7 @@ class ModularVits(BaseTTS):
         )
 
         #UPDATE FOR FAST_PITCH
-        return [VitsDiscriminatorLoss(self.config), VitsPitchGeneratorLoss(self.config)]
+        return [VitsDiscriminatorLoss(self.config), VitsPitchGeneratorLoss(self.config),PitchAlignerLoss(self.config)]
 
     def load_checkpoint(
         self,
