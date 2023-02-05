@@ -2034,11 +2034,18 @@ class ModularVits(BaseTTS):
             gen_parameters = chain(params for k, params in self.named_parameters() if not k.startswith("disc."))
             pitchaligner_optimizer = get_optimizer(self.config.optimizer, self.config.optimizer_params,  self.config.lr_gen, parameters=gen_parameters)
             return [pitchaligner_optimizer]
+            
         elif self.training_phase==2:
             print("Using regular VITS optimizers")
-            scheduler_G = get_scheduler(self.config.lr_scheduler_gen, self.config.lr_scheduler_gen_params, optimizer[0])
-            scheduler_D = get_scheduler(self.config.lr_scheduler_disc, self.config.lr_scheduler_disc_params, optimizer[1])
-            return [scheduler_D, scheduler_G]
+            # select generator parameters
+            optimizer0 = get_optimizer(self.config.optimizer, self.config.optimizer_params, self.config.lr_disc, self.disc)
+
+            gen_parameters = chain(params for k, params in self.named_parameters() if not k.startswith("disc."))
+            optimizer1 = get_optimizer(
+                self.config.optimizer, self.config.optimizer_params, self.config.lr_gen, parameters=gen_parameters
+            )
+            return [optimizer0, optimizer1]
+
         elif self.training_phase==3:
             print("WE NEED TO ADD AN OPTIMIZER for traning phase 3 HERE")
         return [optimizer0, optimizer1]
