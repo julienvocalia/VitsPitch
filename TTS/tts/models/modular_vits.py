@@ -1182,6 +1182,13 @@ class ModularVits(BaseTTS):
 
         return z, spec_segment_size, slice_ids, y_mask
     
+    
+    def forward(  # pylint: disable=dangerous-default-value
+        self,
+    ) -> Dict:
+        return {}
+
+    
     #Modular_vits forward pass for the phase 1
     def forward_phase_1(self,x,x_lengths,mel_input,mel_lens,aux_input):
         sid, g, lid, _ = self._set_cond_input(aux_input)
