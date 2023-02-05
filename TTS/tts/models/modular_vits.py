@@ -1560,47 +1560,37 @@ class ModularVits(BaseTTS):
         """
         #PHASE 1 : PITCH ALIGNER
         if self.training_phase==1:
-            if optimizer_idx == 0:
-                #loading batch
-                tokens = batch["tokens"]
-                token_lengths = batch["token_lens"]
-                d_vectors = batch["d_vectors"]
-                speaker_ids = batch["speaker_ids"]
-                language_ids = batch["language_ids"]
-                mel_input = batch["mel_input"]
-                mel_lens=batch["mel_lengths"]
+            #loading batch
+            tokens = batch["tokens"]
+            token_lengths = batch["token_lens"]
+            d_vectors = batch["d_vectors"]
+            speaker_ids = batch["speaker_ids"]
+            language_ids = batch["language_ids"]
+            mel_input = batch["mel_input"]
+            mel_lens=batch["mel_lengths"]
            
-                #pitch aligner pass
-                outputs=self.forward_phase_1(
-                    x=tokens,
-                    x_lengths=token_lengths,
-                    mel_input=mel_input,
-                    mel_lens=mel_lens,
-                    aux_input={"d_vectors": d_vectors, "speaker_ids": speaker_ids, "language_ids": language_ids}
-                )
+            #pitch aligner pass
+            outputs=self.forward_phase_1(
+                x=tokens,
+                x_lengths=token_lengths,
+                mel_input=mel_input,
+                mel_lens=mel_lens,
+                aux_input={"d_vectors": d_vectors, "speaker_ids": speaker_ids, "language_ids": language_ids}
+            )
                 
-
-                #Loss computation adapted from forwardtts loss
-                with autocast(enabled=False):  # use float32 for the criterion
-                    loss_dict = criterion[optimizer_idx](
-                        decoder_output_lens=mel_lens,
-                        input_lens=token_lengths,
-                        alignment_logprob=outputs['alignment_logprob'],
-                        alignment_hard=outputs['alignment_mas'],
-                        alignment_soft=outputs['alignment_soft'],
-                        binary_loss_weight=None,
-                )
+            #Loss computation adapted from forwardtts loss
+            with autocast(enabled=False):  # use float32 for the criterion
+                loss_dict = criterion[optimizer_idx](
+                    decoder_output_lens=mel_lens,
+                    input_lens=token_lengths,
+                    alignment_logprob=outputs['alignment_logprob'],
+                    alignment_hard=outputs['alignment_mas'],
+                    alignment_soft=outputs['alignment_soft'],
+                    binary_loss_weight=None,
+            )
                 
-                return outputs, loss_dict
-            elif optimizer_idx == 0:
-                print("optimizer_idx ==0")
-            elif optimizer_idx == 1:
-                print("optimizer_idx ==1")
-            else:
-                raise RuntimeError("Calling for unknown optimizer_idx ",optimizer_idx)
-
-
-        
+            return outputs, loss_dict
+            
         #PHASE 2 : CORE VITS
         elif self.training_phase ==2:
             print ("training step phase 2")
