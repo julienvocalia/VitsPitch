@@ -1590,7 +1590,7 @@ class ModularVits(BaseTTS):
             )
             
             #We also compute duration prediction errors
-            duration_error = torch.abs(self.model_outputs_cache["o_alignment_dur"] - durations).sum() / text_lengths.sum()
+            duration_error = torch.abs(ouputs["o_alignment_dur"] - durations).sum() / text_lengths.sum()
             loss_dict["duration_error"] = duration_error
                 
             return outputs, loss_dict
