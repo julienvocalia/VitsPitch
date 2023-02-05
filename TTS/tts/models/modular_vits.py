@@ -21,7 +21,7 @@ from trainer.trainer_utils import get_optimizer, get_scheduler
 from TTS.tts.configs.shared_configs import CharactersConfig
 from TTS.tts.datasets.dataset import TTSDataset, _parse_sample
 from TTS.tts.layers.glow_tts.duration_predictor import DurationPredictor
-from TTS.tts.layers.vits.discriminator import VitsDiscriminator, VitsGeneratorLoss
+from TTS.tts.layers.vits.discriminator import VitsDiscriminator
 from TTS.tts.layers.vitspitch.networks import PosteriorEncoder, ResidualCouplingBlocks, TextEncoder
 #ADDITION FOR MODULAR_VITS
 from TTS.tts.layers.modularvits.networks import TextEmbedderForPitch
