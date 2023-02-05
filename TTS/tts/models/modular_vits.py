@@ -21,7 +21,7 @@ from trainer.trainer_utils import get_optimizer, get_scheduler
 from TTS.tts.configs.shared_configs import CharactersConfig
 from TTS.tts.datasets.dataset import TTSDataset, _parse_sample
 from TTS.tts.layers.glow_tts.duration_predictor import DurationPredictor
-from TTS.tts.layers.vits.discriminator import VitsDiscriminator
+from TTS.tts.layers.vits.discriminator import VitsDiscriminator, VitsGeneratorLoss
 from TTS.tts.layers.vitspitch.networks import PosteriorEncoder, ResidualCouplingBlocks, TextEncoder
 #ADDITION FOR MODULAR_VITS
 from TTS.tts.layers.modularvits.networks import TextEmbedderForPitch
@@ -1596,7 +1596,7 @@ class ModularVits(BaseTTS):
                     y_lengths= spec_lens,
                     waveform = waveform,
                     pitch=pitch,
-                    mel_input=mep_input,
+                    mel_input=mel_input,
                     mel_lens=mel_lens,
                     aux_input={"d_vectors": d_vectors, "speaker_ids": speaker_ids, "language_ids": language_ids},
                 )
@@ -2088,10 +2088,10 @@ class ModularVits(BaseTTS):
         if self.training_phase==2:        
             from TTS.tts.layers.losses import (  # pylint: disable=import-outside-toplevel
                 VitsDiscriminatorLoss,
-                VitsPitchGeneratorLoss,
+                VitsGeneratorLoss,
             )
-            print("launching VitsDiscriminatorLoss and VitsPitchGeneratorLoss as criterion")
-            return [VitsDiscriminatorLoss(self.config), VitsPitchGeneratorLoss(self.config)]        
+            print("launching VitsDiscriminatorLoss and VitsGeneratorLoss as criterion")
+            return [VitsDiscriminatorLoss(self.config), VitsGeneratorLoss(self.config)]        
         
         else:
             print("No criterion to launch yet")
