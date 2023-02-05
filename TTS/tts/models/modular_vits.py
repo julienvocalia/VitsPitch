@@ -1205,7 +1205,6 @@ class ModularVits(BaseTTS):
             )
             alignment_soft = alignment_soft.transpose(1, 2)
             alignment_mas = alignment_mas.transpose(1, 2)
-            dr = o_alignment_dur
         else:
             raise Exception("No aligner is used to compute pitch duration. Make sure use_aligner=True")
         outputs={
@@ -1568,6 +1567,7 @@ class ModularVits(BaseTTS):
             language_ids = batch["language_ids"]
             mel_input = batch["mel_input"]
             mel_lens=batch["mel_lengths"]
+            durations = batch["durations"]
            
             #pitch aligner pass
             outputs=self.forward_phase_1(
@@ -1588,6 +1588,10 @@ class ModularVits(BaseTTS):
                     alignment_soft=outputs['alignment_soft'],
                     binary_loss_weight=None,
             )
+            
+            #We also compute duration prediction errors
+            duration_error = torch.abs(self.model_outputs_cache["o_alignment_dur"] - durations).sum() / text_lengths.sum()
+            loss_dict["duration_error"] = duration_error
                 
             return outputs, loss_dict
             
@@ -1599,133 +1603,7 @@ class ModularVits(BaseTTS):
         elif self.training_phase==3:
             print("training step phase 3")
 
-        spec_lens = batch["spec_lens"]
-        #ADDITION FOR FAST_PITCH
-        token_lenghts = batch["token_lens"]
-        mel_lens=batch["mel_lengths"]
 
-        if optimizer_idx == 0:
-            tokens = batch["tokens"]
-            token_lenghts = batch["token_lens"]
-            spec = batch["spec"]
-
-            d_vectors = batch["d_vectors"]
-            speaker_ids = batch["speaker_ids"]
-            language_ids = batch["language_ids"]
-            waveform = batch["waveform"]
-            #ADDITION FOR FAST_PITCH
-            pitch = batch["pitch"] if self.args.use_pitch else None
-            mel_input = batch["mel_input"]
-            #durations = batch["durations"] if self.args.use_pitch else None
-            
-            # generator pass
-            outputs = self.forward(
-                tokens,
-                token_lenghts,
-                spec,
-                spec_lens,
-                waveform,
-                #ADDITION FOR FAST_PITCH
-                #dr=durations,
-                pitch=pitch,
-                mel_input=mel_input,
-                mel_lens=mel_lens,               
-                aux_input={"d_vectors": d_vectors, "speaker_ids": speaker_ids, "language_ids": language_ids},
-                #ADDITION FOR MODULAR_VITS
-                training_phase=self.training_phase
-            )
-            
-            #ADDITION FOR FAST_PITCH
-            # use aligner's output as the duration target
-            if self.use_aligner:
-                durations_pitch_aligner = outputs["o_alignment_dur"]
-
-            # cache tensors for the generator pass
-            self.model_outputs_cache = outputs  # pylint: disable=attribute-defined-outside-init
-
-            # compute scores and features
-            scores_disc_fake, _, scores_disc_real, _ = self.disc(
-                outputs["model_outputs"].detach(), outputs["waveform_seg"]
-            )
-
-            # compute loss
-            with autocast(enabled=False):  # use float32 for the criterion
-                loss_dict = criterion[optimizer_idx](
-                    scores_disc_real,
-                    scores_disc_fake,
-                )
-            return outputs, loss_dict
-
-        #ADDITION FOR MODULAR_VITS
-        #if optimizer_idx == 1:
-        if self.training_phase==2 and optimizer_idx == 1 :
-            mel = batch["mel"]
-
-            # compute melspec segment
-            with autocast(enabled=False):
-
-                if self.args.encoder_sample_rate:
-                    spec_segment_size = self.spec_segment_size * int(self.interpolate_factor)
-                else:
-                    spec_segment_size = self.spec_segment_size
-
-                mel_slice = segment(
-                    mel.float(), self.model_outputs_cache["slice_ids"], spec_segment_size, pad_short=True
-                )
-                mel_slice_hat = wav_to_mel(
-                    y=self.model_outputs_cache["model_outputs"].float(),
-                    n_fft=self.config.audio.fft_size,
-                    sample_rate=self.config.audio.sample_rate,
-                    num_mels=self.config.audio.num_mels,
-                    hop_length=self.config.audio.hop_length,
-                    win_length=self.config.audio.win_length,
-                    fmin=self.config.audio.mel_fmin,
-                    fmax=self.config.audio.mel_fmax,
-                    center=False,
-                )
-
-            # compute discriminator scores and features
-            scores_disc_fake, feats_disc_fake, _, feats_disc_real = self.disc(
-                self.model_outputs_cache["model_outputs"], self.model_outputs_cache["waveform_seg"]
-            )
-
-            # compute losses
-            with autocast(enabled=False):  # use float32 for the criterion
-                loss_dict = criterion[optimizer_idx](
-                    mel_slice_hat=mel_slice.float(),
-                    mel_slice=mel_slice_hat.float(),
-                    z_p=self.model_outputs_cache["z_p"].float(),
-                    logs_q=self.model_outputs_cache["logs_q"].float(),
-                    m_p=self.model_outputs_cache["m_p"].float(),
-                    logs_p=self.model_outputs_cache["logs_p"].float(),
-                    z_len=spec_lens,
-                    scores_disc_fake=scores_disc_fake,
-                    feats_disc_fake=feats_disc_fake,
-                    feats_disc_real=feats_disc_real,
-                    loss_duration=self.model_outputs_cache["loss_duration"],
-                    use_speaker_encoder_as_loss=self.args.use_speaker_encoder_as_loss,
-                    gt_spk_emb=self.model_outputs_cache["gt_spk_emb"],
-                    syn_spk_emb=self.model_outputs_cache["syn_spk_emb"],
-                    #ADDITION FOR FAST_PITCH
-                    pitch_output=self.model_outputs_cache["pitch_avg"] if self.use_pitch else None,
-                    pitch_target=self.model_outputs_cache["pitch_avg_gt"] if self.use_pitch else None,
-                    dur_target=self.model_outputs_cache["o_alignment_dur"] if self.use_aligner else None,
-                    alignment_logprob=self.model_outputs_cache["alignment_logprob"] if self.use_aligner else None,
-                    input_lens=token_lenghts,
-                    alignment_hard=self.model_outputs_cache["alignment_mas"],
-                    alignment_soft=self.model_outputs_cache["alignment_soft"],
-                    binary_loss_weight=self.binary_loss_weight,
-                    decoder_output_lens=mel_lens,
-                )
-            #ADDITION FOR FAST_PITCH
-            # TODO : compute duration error ?
-            #durations_pred = self.model_outputs_cache["durations"]
-            #duration_error = torch.abs(self.model_outputs_cache["o_alignment_dur"] - durations_pred).sum() / text_lengths.sum()
-            #loss_dict["duration_error"] = duration_error
-
-            return self.model_outputs_cache, loss_dict
-
-        raise ValueError(" [!] Unexpected `optimizer_idx`.")
 
     def _log(self, ap, batch, outputs, name_prefix="train"):  # pylint: disable=unused-argument,no-self-use
         y_hat = outputs[1]["model_outputs"]
