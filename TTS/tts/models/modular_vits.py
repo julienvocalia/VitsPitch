@@ -1215,8 +1215,8 @@ class ModularVits(BaseTTS):
             }
         return outputs        
     
-        #Modular_vits forward pass for the phase 2
-        def forward_phase_2(  # pylint: disable=dangerous-default-value
+    #Modular_vits forward pass for the phase 2
+    def forward_phase_2(  # pylint: disable=dangerous-default-value
         self,
         x: torch.tensor,
         x_lengths: torch.tensor,
@@ -1584,7 +1584,7 @@ class ModularVits(BaseTTS):
                 # generator pass
                 outputs = self.forward_phase_2(
                     x=tokens,
-                    x_lengths=token_lengths
+                    x_lengths=token_lengths,
                     y = spec,
                     y_lengths= spec_lens,
                     waveform = waveform,
@@ -1609,7 +1609,7 @@ class ModularVits(BaseTTS):
                         scores_disc_fake,
                     )
                 return outputs, loss_dict
-             if optimizer_idx == 1:
+            if optimizer_idx == 1:
                 mel = batch["mel"]
 
                 # compute melspec segment
