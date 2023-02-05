@@ -1567,7 +1567,6 @@ class ModularVits(BaseTTS):
             language_ids = batch["language_ids"]
             mel_input = batch["mel_input"]
             mel_lens=batch["mel_lengths"]
-            durations = batch["durations"]
            
             #pitch aligner pass
             outputs=self.forward_phase_1(
@@ -1589,10 +1588,6 @@ class ModularVits(BaseTTS):
                     binary_loss_weight=None,
             )
             
-            #We also compute duration prediction errors
-            duration_error = torch.abs(ouputs["o_alignment_dur"] - durations).sum() / text_lengths.sum()
-            loss_dict["duration_error"] = duration_error
-                
             return outputs, loss_dict
             
         #PHASE 2 : CORE VITS
