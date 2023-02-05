@@ -1695,7 +1695,7 @@ class ModularVits(BaseTTS):
         
         #ADDITION FOR FAST_PITCH
         # plot pitch figures
-        if self.args.use_pitch:
+        if self.args.use_pitch and self.training_phase==3:
             pitch_avg = abs(outputs[1]["pitch_avg_gt"][0, 0].data.cpu().numpy())
             pitch_avg_hat = abs(outputs[1]["pitch_avg"][0, 0].data.cpu().numpy())
             tokens = self.tokenizer.decode(batch["tokens"][0].data.cpu().numpy())
