@@ -1435,8 +1435,9 @@ class ModularVits(BaseTTS):
         if self.args.use_language_embedding and lid is not None:
             lang_emb = self.emb_l(lid).unsqueeze(-1)
       
-        #Text Embedding for pitch aligner purpose only
-        x_mask, x_emb = self.pitch_text_embedder(x, x_lengths, lang_emb=lang_emb)
+        #Regular Text Encoding as per core vits
+        x, m_p, logs_p, x_mask, x_emb = self.text_encoder(x, x_lengths, lang_emb=lang_emb)
+        #x_mask, x_emb = self.pitch_text_embedder(x, x_lengths, lang_emb=lang_emb)
         
         # pitch duration calculation with generic aligner
         mel_mask = torch.unsqueeze(sequence_mask(mel_lens, mel_input.shape[1]), 1).float()
