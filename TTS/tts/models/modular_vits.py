@@ -677,11 +677,11 @@ class ModularVitsArgs(Coqpit):
     speaker_encoder_config_path: str = ""
     speaker_encoder_model_path: str = ""
     condition_dp_on_speaker: bool = True
-    freeze_encoder: bool = False
-    freeze_DP: bool = False
-    freeze_PE: bool = False
-    freeze_flow_decoder: bool = False
-    freeze_waveform_decoder: bool = False
+    #freeze_encoder: bool = False
+    #freeze_DP: bool = False
+    #freeze_PE: bool = False
+    #freeze_flow_decoder: bool = False
+    #freeze_waveform_decoder: bool = False
     encoder_sample_rate: int = None
     interpolate_z: bool = True
     reinit_DP: bool = False
@@ -758,6 +758,36 @@ class ModularVits(BaseTTS):
         self.f0_cache_path=self.config.f0_cache_path
         #ADDITION FOR MODULAR_VITS
         self.training_phase=self.config.training_phase
+        if self.training_phase==1:
+            self.freeze_pitch_predictor=True
+            self.freeze_pitch_embedding=False
+            self.freeze_pitch_aligner=False
+            self.freeze_prior_encoder=True
+            self.freeze_post_encoder=True
+            self.freeze_SDP=True
+            self.freeze_flow_decoder=True
+            self.freeze_waveform_decoder=True
+            self.freeze_disc=True
+        elif self.training_phase==2:
+            self.freeze_pitch_predictor=True
+            self.freeze_pitch_embedding=True
+            self.freeze_pitch_aligner=True
+            self.freeze_prior_encoder=False
+            self.freeze_post_encoder=False
+            self.freeze_SDP=False
+            self.freeze_flow_decoder=False
+            self.freeze_waveform_decoder=False
+            self.freeze_disc=False
+        elif self.training_phase==3:           
+            self.freeze_pitch_predictor=False
+            self.freeze_pitch_embedding=True
+            self.freeze_pitch_aligner=True
+            self.freeze_prior_encoder=True
+            self.freeze_post_encoder=True
+            self.freeze_SDP=True
+            self.freeze_flow_decoder=True
+            self.freeze_waveform_decoder=True
+            self.freeze_disc=True
 
         self.text_encoder = TextEncoder(
             self.args.num_chars,
@@ -984,7 +1014,8 @@ class ModularVits(BaseTTS):
         return {"speaker_ids": sid, "style_wav": None, "d_vectors": g, "language_ids": lid}
 
     def _freeze_layers(self):
-        if self.args.freeze_encoder:
+    
+        if self.args.freeze_prior_encoder:
             for param in self.text_encoder.parameters():
                 param.requires_grad = False
 
@@ -992,22 +1023,38 @@ class ModularVits(BaseTTS):
                 for param in self.emb_l.parameters():
                     param.requires_grad = False
 
-        if self.args.freeze_PE:
+        if self.freeze_post_encoder:
             for param in self.posterior_encoder.parameters():
                 param.requires_grad = False
 
-        if self.args.freeze_DP:
+        if self.freeze_SDP:
             for param in self.duration_predictor.parameters():
                 param.requires_grad = False
 
-        if self.args.freeze_flow_decoder:
+        if self.freeze_flow_decoder:
             for param in self.flow.parameters():
                 param.requires_grad = False
 
-        if self.args.freeze_waveform_decoder:
+        if self.freeze_waveform_decoder:
             for param in self.waveform_decoder.parameters():
                 param.requires_grad = False
-
+        
+        if self.freeze_pitch_predictor:
+            for param in self.pitch_predictor.parameters():
+                param.requires_grad = False
+        
+        if self.freeze_pitch_embedding:
+            for param in self.pitch_emb.parameters():
+                param.requires_grad = False
+        
+        if self.freeze_pitch_aligner:
+            for param in self.pitch_aligner.parameters():
+                param.requires_grad = False
+                
+        if self.freeze_disc:
+            for param in self.disc.parameters():
+                param.requires_grad = False
+                
     @staticmethod
     def _set_cond_input(aux_input: Dict):
         """Set the speaker conditioning input based on the multi-speaker mode."""
