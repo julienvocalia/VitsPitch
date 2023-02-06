@@ -1015,7 +1015,7 @@ class ModularVits(BaseTTS):
 
     def _freeze_layers(self):
     
-        if self.args.freeze_prior_encoder:
+        if self.freeze_prior_encoder:
             for param in self.text_encoder.parameters():
                 param.requires_grad = False
 
@@ -1768,7 +1768,7 @@ class ModularVits(BaseTTS):
                 x=tokens,
                 x_lengths=token_lengths,
                 pitch=pitch,
-                mel_input=mel_input
+                mel_input=mel_input,
                 aux_input={"d_vectors": d_vectors, "speaker_ids": speaker_ids, "language_ids": language_ids},
             )
             
