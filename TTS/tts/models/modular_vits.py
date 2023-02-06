@@ -1836,10 +1836,12 @@ class ModularVits(BaseTTS):
         """
         if self.training_phase==1:
             print("nothing to plot in phase 1")
-        else:
+        elif self.training_phase==2:
             figures, audios = self._log(self.ap, batch, outputs, "train")
             logger.train_figures(steps, figures)
             logger.train_audios(steps, audios, self.ap.sample_rate)
+        elif self.training_phase==3:
+            print("nothing to plot in phase 3")
 
     @torch.no_grad()
     def eval_step(self, batch: dict, criterion: nn.Module, optimizer_idx: int):
