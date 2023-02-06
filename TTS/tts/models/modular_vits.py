@@ -1414,6 +1414,34 @@ class ModularVits(BaseTTS):
         )
         return outputs
 
+    #Modular_vits forward pass for the phase 3
+    def forward_phase_3(
+        self,
+        x: torch.tensor,
+        x_lengths: torch.tensor,
+        dr: torch.IntTensor = None,
+        pitch: torch.FloatTensor = None,
+        aux_input={"d_vectors": None, "speaker_ids": None, "language_ids": None},
+    ) -> Dict:
+    
+        sid, g, lid, _ = self._set_cond_input(aux_input)
+        # speaker embedding
+        if self.args.use_speaker_embedding and sid is not None:
+            g = self.emb_g(sid).unsqueeze(-1)  # [b, h, 1]
+
+        # language embedding
+        lang_emb = None
+        if self.args.use_language_embedding and lid is not None:
+            lang_emb = self.emb_l(lid).unsqueeze(-1)
+      
+        #Text Embedding for pitch aligner purpose only
+        x_mask, x_emb = self.pitch_text_embedder(x, x_lengths, lang_emb=lang_emb)
+
+        #Pitch predictor pass
+        o_pitch_emb, o_pitch, avg_pitch = self._forward_pitch_predictor(x, x_mask, pitch, dr,g=g)
+    
+        return {"pitch_avg": o_pitch,"pitch_avg_gt": avg_pitch}
+
     @staticmethod
     def _set_x_lengths(x, aux_input):
         if "x_lengths" in aux_input and aux_input["x_lengths"] is not None:
