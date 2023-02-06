@@ -1420,6 +1420,7 @@ class ModularVits(BaseTTS):
         x: torch.tensor,
         x_lengths: torch.tensor,
         mel_input: torch.FloatTensor,
+        mel_lens: torch.tensor,
         pitch: torch.FloatTensor,
         aux_input={"d_vectors": None, "speaker_ids": None, "language_ids": None},
     ) -> Dict:
@@ -1759,6 +1760,7 @@ class ModularVits(BaseTTS):
             token_lengths = batch["token_lens"]
             pitch = batch["pitch"]
             mel_input = batch["mel_input"]
+            mel_lens=batch["mel_lengths"]
             d_vectors = batch["d_vectors"]
             speaker_ids = batch["speaker_ids"]
             language_ids = batch["language_ids"]
@@ -1769,6 +1771,7 @@ class ModularVits(BaseTTS):
                 x_lengths=token_lengths,
                 pitch=pitch,
                 mel_input=mel_input,
+                mel_lens=mel_lens,
                 aux_input={"d_vectors": d_vectors, "speaker_ids": speaker_ids, "language_ids": language_ids},
             )
             
