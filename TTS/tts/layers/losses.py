@@ -1097,3 +1097,28 @@ class PitchAlignerLoss(nn.Module):
 
         return_dict["loss"] = loss
         return return_dict
+
+class PitchPredictorLoss(nn.Module):
+    """Generic configurable ForwardTTS loss."""
+
+    def __init__(self, c):
+        super().__init__()
+        self.pitch_loss = MSELossMasked(False)
+        self.pitch_loss_alpha = c.pitch_loss_alpha
+
+        
+    def forward(
+        self,
+        pitch_output,
+        pitch_target,
+        input_lens,
+    ):
+        loss = 0
+        return_dict = {}
+
+        pitch_loss = self.pitch_loss(pitch_output.transpose(1, 2), pitch_target.transpose(1, 2), input_lens)
+        loss = loss + self.pitch_loss_alpha * pitch_loss
+        return_dict["loss_pitch"] = self.pitch_loss_alpha * pitch_loss
+
+        return_dict["loss"] = loss
+        return return_dict

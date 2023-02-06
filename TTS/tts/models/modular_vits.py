@@ -1419,8 +1419,8 @@ class ModularVits(BaseTTS):
         self,
         x: torch.tensor,
         x_lengths: torch.tensor,
-        dr: torch.IntTensor = None,
-        pitch: torch.FloatTensor = None,
+        mel_input: torch.FloatTensor,
+        pitch: torch.FloatTensor,
         aux_input={"d_vectors": None, "speaker_ids": None, "language_ids": None},
     ) -> Dict:
     
@@ -1436,9 +1436,15 @@ class ModularVits(BaseTTS):
       
         #Text Embedding for pitch aligner purpose only
         x_mask, x_emb = self.pitch_text_embedder(x, x_lengths, lang_emb=lang_emb)
+        
+        # pitch duration calculation with generic aligner
+        mel_mask = torch.unsqueeze(sequence_mask(mel_lens, mel_input.shape[1]), 1).float()
+        o_alignment_dur, alignment_soft, alignment_logprob, alignment_mas = self._forward_pitch_aligner(
+            x_emb, mel_input, x_mask, mel_mask
+        )
 
         #Pitch predictor pass
-        o_pitch_emb, o_pitch, avg_pitch = self._forward_pitch_predictor(x, x_mask, pitch, dr,g=g)
+        o_pitch_emb, o_pitch, avg_pitch = self._forward_pitch_predictor(x, x_mask, pitch, o_alignment_dur,g=g)
     
         return {"pitch_avg": o_pitch,"pitch_avg_gt": avg_pitch}
 
@@ -1748,7 +1754,33 @@ class ModularVits(BaseTTS):
         
         #PHASE 3 : PITCH PREDICTOR
         elif self.training_phase==3:
-            print("training step phase 3")
+            #loading batch
+            tokens = batch["tokens"]
+            token_lengths = batch["token_lens"]
+            pitch = batch["pitch"]
+            mel_input = batch["mel_input"]
+            d_vectors = batch["d_vectors"]
+            speaker_ids = batch["speaker_ids"]
+            language_ids = batch["language_ids"]
+        
+        
+            outputs = self.forward_phase_3(
+                x=tokens,
+                x_lengths=token_lengths,
+                pitch=pitch,
+                mel_input=mel_input
+                aux_input={"d_vectors": d_vectors, "speaker_ids": speaker_ids, "language_ids": language_ids},
+            )
+            
+            #Loss computation adapted from forwardtts loss
+            with autocast(enabled=False):  # use float32 for the criterion
+                loss_dict = criterion[optimizer_idx](
+                    pitch_output=outputs["pitch_avg"],
+                    pitch_target=outputs["pitch_avg_gt"],
+                    input_lens=token_lengths,
+            )
+            
+            return outputs, loss_dict
 
 
 
@@ -2160,7 +2192,7 @@ class ModularVits(BaseTTS):
             print("Launching PitchAlignerloss as criterion")
             return [PitchAlignerLoss(self.config)]
 
-        if self.training_phase==2:        
+        elif self.training_phase==2:        
             from TTS.tts.layers.losses import (  # pylint: disable=import-outside-toplevel
                 VitsDiscriminatorLoss,
                 VitsGeneratorLoss,
@@ -2168,6 +2200,10 @@ class ModularVits(BaseTTS):
             print("launching VitsDiscriminatorLoss and VitsGeneratorLoss as criterion")
             return [VitsDiscriminatorLoss(self.config), VitsGeneratorLoss(self.config)]        
         
+        elif self.training_phase==3:
+            from TTS.tts.layers.losses import (PitchPredictorLoss)
+            print("launching Pitch loss as criterion")
+            return [PitchPredictorLoss(self.config)]
         else:
             print("No criterion to launch yet")
             return []
