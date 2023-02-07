@@ -1682,7 +1682,7 @@ class ModularVits(BaseTTS):
                     alignment_logprob=outputs['alignment_logprob'],
                     alignment_hard=outputs['alignment_mas'],
                     alignment_soft=outputs['alignment_soft'],
-                    binary_loss_weight=None,
+                    binary_loss_weight=self.binary_loss_weight,
             )
             
             return outputs, loss_dict
@@ -2331,7 +2331,7 @@ class ModularVits(BaseTTS):
     #ADDITION FOR FAST_PITCH
     def on_train_step_start(self, trainer):
         """Schedule binary loss weight."""
-        self.binary_loss_weight = min((trainer.epochs_done + trainer.restore_epoch) / self.config.binary_loss_warmup_epochs, 1.0) * 1.0
+        self.binary_loss_weight = min(trainer.epochs_done / self.config.binary_loss_warmup_epochs, 1.0) * 1.0
         
 ##################################
 # VITS CHARACTERS
