@@ -1619,17 +1619,18 @@ class ModularVits(BaseTTS):
         Returns:
             Tuple[Dict, Dict]: Model ouputs and computed losses.
         """
+        #loading batch that will be used for any phase
+        tokens = batch["tokens"]
+        token_lengths = batch["token_lens"]
+        mel_input = batch["mel_input"]
+        mel_lens=batch["mel_lengths"]
+        d_vectors = batch["d_vectors"]
+        speaker_ids = batch["speaker_ids"]
+        language_ids = batch["language_ids"]
+ 
         #PHASE 1 : PITCH ALIGNER
         if self.training_phase==1:
-            #loading batch
-            tokens = batch["tokens"]
-            token_lengths = batch["token_lens"]
-            d_vectors = batch["d_vectors"]
-            speaker_ids = batch["speaker_ids"]
-            language_ids = batch["language_ids"]
-            mel_input = batch["mel_input"]
-            mel_lens=batch["mel_lengths"]
-           
+
             #pitch aligner pass
             outputs=self.forward_phase_1(
                 x=tokens,
@@ -1654,20 +1655,13 @@ class ModularVits(BaseTTS):
             
         #PHASE 2 : CORE VITS
         elif self.training_phase ==2:
+            #loading batch
             spec_lens = batch["spec_lens"]
-            token_lengths = batch["token_lens"]
-            mel_lens=batch["mel_lengths"]
 
             if optimizer_idx == 0:
-                tokens = batch["tokens"]
                 spec = batch["spec"]
-
-                d_vectors = batch["d_vectors"]
-                speaker_ids = batch["speaker_ids"]
-                language_ids = batch["language_ids"]
                 waveform = batch["waveform"]
                 pitch = batch["pitch"] if self.args.use_pitch else None
-                mel_input = batch["mel_input"]
                 
                 # generator pass
                 outputs = self.forward_phase_2(
@@ -1698,6 +1692,7 @@ class ModularVits(BaseTTS):
                     )
                 return outputs, loss_dict
             if optimizer_idx == 1:
+                #loading batch
                 mel = batch["mel"]
 
                 # compute melspec segment
@@ -1755,16 +1750,8 @@ class ModularVits(BaseTTS):
         #PHASE 3 : PITCH PREDICTOR
         elif self.training_phase==3:
             #loading batch
-            tokens = batch["tokens"]
-            token_lengths = batch["token_lens"]
             pitch = batch["pitch"]
-            mel_input = batch["mel_input"]
-            mel_lens=batch["mel_lengths"]
-            d_vectors = batch["d_vectors"]
-            speaker_ids = batch["speaker_ids"]
-            language_ids = batch["language_ids"]
-        
-        
+
             outputs = self.forward_phase_3(
                 x=tokens,
                 x_lengths=token_lengths,
