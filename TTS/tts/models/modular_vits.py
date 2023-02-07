@@ -1237,33 +1237,33 @@ class ModularVits(BaseTTS):
     ) -> Dict:
         if training_phase==1:
             return self.forward_phase_1(
-                x=kwargs.get(x),
-                x_lengths=kwargs.get(x_lengths),
-                mel_input=kwargs.get(mel_input),
-                mel_lens=kwargs.get(mel_lens),
-                aux_input=kwargs.get(aux_input)
+                x=kwargs.get('x'),
+                x_lengths=kwargs.get('x_lengths'),
+                mel_input=kwargs.get('mel_input'),
+                mel_lens=kwargs.get('mel_lens'),
+                aux_input=kwargs.get('aux_input')
             )
                
         elif training_phase==2:
             return self.forward_phase_2(
-                    x=kwargs.get(x),
-                    x_lengths=kwargs.get(x_lengths),
-                    y = kwargs.get(y),
-                    y_lengths= kwargs.get(y_lengths),
-                    waveform = kwargs.get(waveform),
-                    pitch=kwargs.get(pitch),
-                    mel_input=kwargs.get(mel_input),
-                    mel_lens=kwargs.get(mel_lens),
-                    aux_input=kwargs.get(aux_input)
+                    x=kwargs.get('x'),
+                    x_lengths=kwargs.get('x_lengths'),
+                    y = kwargs.get('y'),
+                    y_lengths= kwargs.get('y_lengths'),
+                    waveform = kwargs.get('waveform'),
+                    pitch=kwargs.get('pitch'),
+                    mel_input=kwargs.get('mel_input'),
+                    mel_lens=kwargs.get('mel_lens'),
+                    aux_input=kwargs.get('aux_input')
             )
         elif training_phase==3:
             return self.forward_phase_3(
-                    x=kwargs.get(x),
-                    x_lengths=kwargs.get(x_lengths),
-                    pitch=kwargs.get(pitch),
-                    mel_input=kwargs.get(mel_input),
-                    mel_lens=kwargs.get(mel_lens),
-                    aux_input=kwargs.get(aux_input)
+                    x=kwargs.get('x'),
+                    x_lengths=kwargs.get('x_lengths'),
+                    pitch=kwargs.get('pitch'),
+                    mel_input=kwargs.get('mel_input'),
+                    mel_lens=kwargs.get('mel_lens'),
+                    aux_input=kwargs.get('aux_input')
             )
         raise ValueError(" [!] Unexpected training_phase {} in forward function.".format(training_phase))
         
@@ -1788,7 +1788,7 @@ class ModularVits(BaseTTS):
             pitch = batch["pitch"]
 
             outputs = self.forward(
-                training_phase=self.training_phase
+                training_phase=self.training_phase,
                 x=tokens,
                 x_lengths=token_lengths,
                 pitch=pitch,
