@@ -1499,10 +1499,8 @@ class ModularVits(BaseTTS):
         
         #ADDITION FOR FAST_PITCH
         # pitch predictor pass
-        o_pitch = None
-        if self.args.use_pitch:
-            o_pitch_emb, o_pitch = self._forward_pitch_predictor(x, x_mask,g=g)
-            x = x + o_pitch_emb
+        o_pitch_emb, o_pitch = self._forward_pitch_predictor(x, x_mask,g=g)
+        x = x + o_pitch_emb
 
         if durations is None:
             if self.args.use_sdp:
