@@ -2143,10 +2143,9 @@ class ModularVits(BaseTTS):
             List: optimizers.
         """
         if self.training_phase==1:
-            print("Using the same optimizer as vits generator")
-            gen_parameters = chain(params for k, params in self.named_parameters() if not k.startswith("disc."))
-            pitchaligner_optimizer = get_optimizer(self.config.optimizer, self.config.optimizer_params,  self.config.lr_gen, parameters=gen_parameters)
-            return [pitchaligner_optimizer]
+            print("Using the same optimizer as FastPitch")
+            optimizer_pitch_aligner = get_optimizer(self.config.optimizer_pitch, self.config.optimizer_pitch_params, self.config.lr_pitch_aligner, self.pitch_aligner)
+            return [optimizer_pitch_aligner]
             
         elif self.training_phase==2:
             print("Using regular VITS optimizers")
@@ -2161,9 +2160,12 @@ class ModularVits(BaseTTS):
 
         elif self.training_phase==3:
             print("Using the same optimizer as vits generator")
-            gen_parameters = chain(params for k, params in self.named_parameters() if not k.startswith("disc."))
-            pitchpredictor_optimizer = get_optimizer(self.config.optimizer, self.config.optimizer_params,  self.config.lr_gen, parameters=gen_parameters)
-            return [pitchpredictor_optimizer]
+            optimizer_pitch_predictor=get_optimizer(self.config.optimizer_pitch, self.config.optimizer_pitch_params, self.config.lr_pitch_predictor, self.pitch_predictor)
+            return [optimizer_pitch_predictor]
+        
+        raise RuntimeError(
+            " [!] No optimizer associated with training phase {}".format(self.training_phase)
+        )
         
     def get_lr(self) -> List:
         """Set the initial learning rates for each optimizer.
@@ -2171,7 +2173,18 @@ class ModularVits(BaseTTS):
         Returns:
             List: learning rates for each optimizer.
         """
-        return [self.config.lr_disc, self.config.lr_gen]
+        if self.training_phase==1:
+            return [self.config.lr_pitch_aligner]
+        
+        elif self.training_phase==2:
+            return [self.config.lr_disc, self.config.lr_gen]
+         
+        elif self.training_phase==3:
+            return  [self.config.lr_pitch_predictor]
+        raise RuntimeError(
+            " [!] No learning rate associated with training phase {}".format(self.training_phase)
+        )
+        
 
     def get_scheduler(self, optimizer) -> List:
         """Set the schedulers for each optimizer.
@@ -2182,14 +2195,22 @@ class ModularVits(BaseTTS):
         Returns:
             List: Schedulers, one for each optimizer.
         """
-        scheduler_G = get_scheduler(self.config.lr_scheduler_gen, self.config.lr_scheduler_gen_params, optimizer[0])
-        #MODIFICATION FOR MODULAR_VITS
-        #we only need the discriminator optimizer if we are on training phase 2
-        if self.training_phase == 2 :
+        if self.training_phase==1:
+            scheduler_pitch_aligner=get_scheduler(self.config.lr_scheduler_pitch_aligner, self.config.lr_scheduler_pitch_aligner_params, optimizer[0])
+            return [scheduler_pitch_aligner]
+        
+        elif self.training_phase==2:
+            scheduler_G = get_scheduler(self.config.lr_scheduler_gen, self.config.lr_scheduler_gen_params, optimizer[0])
             scheduler_D = get_scheduler(self.config.lr_scheduler_disc, self.config.lr_scheduler_disc_params, optimizer[1])
             return[scheduler_D,scheduler_G]
-        else:
-            return [scheduler_G]
+
+        elif self.training_phase==3:
+            scheduler_pitch_predictor=get_scheduler(self.config.lr_scheduler_pitch_predictor, self.config.lr_scheduler_pitch_predictor_params, optimizer[0])
+            return  [scheduler_pitch_predictor]
+            
+        raise RuntimeError(
+            " [!] No scheduler(s) associated with training phase {}".format(self.training_phase)
+        )
 
     def get_criterion(self):
         """Get criterions for each optimizer. The index in the output list matches the optimizer idx used in

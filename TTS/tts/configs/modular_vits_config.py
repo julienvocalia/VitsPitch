@@ -26,6 +26,13 @@ class ModularVitsConfig(BaseTTSConfig):
 
         lr_disc (float):
             Initial learning rate for the discriminator. Defaults to 0.0002.
+            
+        lr_pitch_aligner (float):
+            Initial learning rate for the pitch aligner. Defaults to 0.0002.
+
+        lr_pitch_predictor (float):
+            Initial learning rate for the pitch predictor. Defaults to 0.0002.    
+        
 
         lr_scheduler_gen (str):
             Name of the learning rate scheduler for the generator. One of the `torch.optim.lr_scheduler.*`. Defaults to
@@ -130,17 +137,34 @@ class ModularVitsConfig(BaseTTSConfig):
     #ADDITION FOR MODULAR_VITS
     training_phase:int = None
 
-    # optimizer
+    # optimizer for core vits
     grad_clip: List[float] = field(default_factory=lambda: [1000, 1000])
-    lr_gen: float = 0.0002
-    lr_disc: float = 0.0002
-    lr_scheduler_gen: str = "ExponentialLR"
-    lr_scheduler_gen_params: dict = field(default_factory=lambda: {"gamma": 0.999875, "last_epoch": -1})
-    lr_scheduler_disc: str = "ExponentialLR"
-    lr_scheduler_disc_params: dict = field(default_factory=lambda: {"gamma": 0.999875, "last_epoch": -1})
     scheduler_after_epoch: bool = True
     optimizer: str = "AdamW"
     optimizer_params: dict = field(default_factory=lambda: {"betas": [0.8, 0.99], "eps": 1e-9, "weight_decay": 0.01})
+    
+    #optimizer for Fast Pitch modules
+    optimizer_pitch: str = "Adam"
+    optimizer_pitch_params: dict = field(default_factory=lambda: {"betas": [0.9, 0.998], "weight_decay": 1e-6})    
+    
+    lr_gen: float = 0.0002 #phase 2
+    lr_scheduler_gen: str = "ExponentialLR"
+    lr_scheduler_gen_params: dict = field(default_factory=lambda: {"gamma": 0.999875, "last_epoch": -1})
+    
+    lr_disc: float = 0.0002 #phase 2
+    lr_scheduler_disc: str = "ExponentialLR"
+    lr_scheduler_disc_params: dict = field(default_factory=lambda: {"gamma": 0.999875, "last_epoch": -1})
+    
+    #as per  fast_pitch_config
+    lr_pitch_aligner: float = 1e-4 #phase 1
+    lr_scheduler_pitch_aligner: str = "NoamLR"
+    lr_scheduler_pitch_aligner_params: dict = field(default_factory=lambda: {"warmup_steps": 4000})
+    
+    #as per fast_pitch_config
+    lr_pitch_predictor: float = 0.0002 #phase 3
+    lr_scheduler_pitch_predictor: str = "NoamLR"
+    lr_scheduler_pitch_predictor_params: dict = field(default_factory=lambda: {"warmup_steps": 4000})
+
 
     # loss params
     kl_loss_alpha: float = 1.0
