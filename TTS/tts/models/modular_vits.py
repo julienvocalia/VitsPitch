@@ -1191,6 +1191,11 @@ class ModularVits(BaseTTS):
             x_mask,
             g=g.detach() if self.args.detach_dp_input and g is not None else g
         )
+        
+        if pitch is not None:
+            avg_pitch = average_over_durations(pitch, dr)
+            o_pitch_emb = self.pitch_conv1d(avg_pitch)
+            return o_pitch_emb, o_pitch, avg_pitch        
         o_pitch_emb = self.pitch_conv1d(o_pitch)
         return o_pitch_emb, o_pitch
 
