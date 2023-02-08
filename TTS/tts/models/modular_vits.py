@@ -1428,7 +1428,7 @@ class ModularVits(BaseTTS):
         #x_mask, x_emb = self.pitch_text_embedder(x, x_lengths, lang_emb=lang_emb)        
         o_p_e, m_p, logs_p, x_mask, x_emb = self.pitch_text_encoder(x, x_lengths, lang_emb=lang_emb)
         #Pitch predictor pass
-        o_pitch_emb, _, _ = self._forward_pitch_predictor(
+        o_pitch_emb, o_pitch= self._forward_pitch_predictor(
             o_en=o_p_e, 
             x_mask=x_mask, 
             g=g
