@@ -761,6 +761,8 @@ class ModularVits(BaseTTS):
         if self.training_phase==1:
             self.freeze_pitch_predictor=True
             self.freeze_pitch_embedding=False
+            self.freeze_pitch_encoding=True
+            self.freeze_pitch_conv1d=True
             self.freeze_pitch_aligner=False
             self.freeze_prior_encoder=True
             self.freeze_post_encoder=True
@@ -771,6 +773,8 @@ class ModularVits(BaseTTS):
         elif self.training_phase==2:           
             self.freeze_pitch_predictor=False
             self.freeze_pitch_embedding=True
+            self.freeze_pitch_encoding=False
+            self.freeze_pitch_conv1d=True
             self.freeze_pitch_aligner=True
             self.freeze_prior_encoder=True
             self.freeze_post_encoder=True
@@ -781,6 +785,8 @@ class ModularVits(BaseTTS):
         elif self.training_phase==3:
             self.freeze_pitch_predictor=True
             self.freeze_pitch_embedding=True
+            self.freeze_pitch_encoding=True
+            self.freeze_pitch_conv1d=True
             self.freeze_pitch_aligner=True
             self.freeze_prior_encoder=False
             self.freeze_post_encoder=False
@@ -875,7 +881,7 @@ class ModularVits(BaseTTS):
                 #addition for speaker embedding
                 cond_channels=self.embedded_speaker_dim,
             )
-            self.pitch_emb = nn.Conv1d(
+            self.pitch_conv1d = nn.Conv1d(
                 1,
                 self.args.hidden_channels,
                 kernel_size=self.args.pitch_embedding_kernel_size,
@@ -1057,7 +1063,17 @@ class ModularVits(BaseTTS):
                 param.requires_grad = False
         
         if self.freeze_pitch_embedding:
-            for param in self.pitch_emb.parameters():
+            for name, param in self.pitch_text_encoder.named_parameters():
+                if name=="emb.weight":
+                    param.requires_grad=False
+                
+        if self.freeze_pitch_encoding:
+            for name, param in self.pitch_text_encoder.named_parameters():
+                if name!="emb.weight":
+                    param.requires_grad=False
+        
+        if self.freeze_pitch_conv1d:
+            for param in self.pitch_conv1d.parameters():
                 param.requires_grad = False
         
         if self.freeze_pitch_aligner:
@@ -1175,11 +1191,7 @@ class ModularVits(BaseTTS):
             x_mask,
             g=g.detach() if self.args.detach_dp_input and g is not None else g
         )
-        if pitch is not None:
-            avg_pitch = average_over_durations(pitch, dr)
-            o_pitch_emb = self.pitch_emb(avg_pitch)
-            return o_pitch_emb, o_pitch, avg_pitch
-        o_pitch_emb = self.pitch_emb(o_pitch)
+        o_pitch_emb = self.pitch_conv1d(o_pitch)
         return o_pitch_emb, o_pitch
 
     #ADDITION FOR FAST_PITCH
