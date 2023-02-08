@@ -398,7 +398,7 @@ class ModularVitsDataset(TTSDataset):
         mel = mel.transpose(0, 2, 1)
         mel = torch.FloatTensor(mel).contiguous()   
         # format F0
-        if self.compute_f0 and self.training_phase!=1:
+        if self.compute_f0 and self.training_phase==2:
             pitch = prepare_data(batch["pitch"])
             assert mel.shape[1] == pitch.shape[1], f"[!] {mel.shape} vs {pitch.shape}"
             pitch = torch.FloatTensor(pitch)[:, None, :].contiguous()  # B x 1 xT
@@ -768,17 +768,7 @@ class ModularVits(BaseTTS):
             self.freeze_flow_decoder=True
             self.freeze_waveform_decoder=True
             self.freeze_disc=True
-        elif self.training_phase==2:
-            self.freeze_pitch_predictor=True
-            self.freeze_pitch_embedding=True
-            self.freeze_pitch_aligner=True
-            self.freeze_prior_encoder=False
-            self.freeze_post_encoder=False
-            self.freeze_SDP=False
-            self.freeze_flow_decoder=False
-            self.freeze_waveform_decoder=False
-            self.freeze_disc=False
-        elif self.training_phase==3:           
+        elif self.training_phase==2:           
             self.freeze_pitch_predictor=False
             self.freeze_pitch_embedding=True
             self.freeze_pitch_aligner=True
@@ -788,6 +778,17 @@ class ModularVits(BaseTTS):
             self.freeze_flow_decoder=True
             self.freeze_waveform_decoder=True
             self.freeze_disc=True
+        elif self.training_phase==3:
+            self.freeze_pitch_predictor=True
+            self.freeze_pitch_embedding=True
+            self.freeze_pitch_aligner=True
+            self.freeze_prior_encoder=False
+            self.freeze_post_encoder=False
+            self.freeze_SDP=False
+            self.freeze_flow_decoder=False
+            self.freeze_waveform_decoder=False
+            self.freeze_disc=False
+
 
         self.text_encoder = TextEncoder(
             self.args.num_chars,
@@ -882,14 +883,26 @@ class ModularVits(BaseTTS):
             )
         if self.args.use_aligner:
             self.pitch_aligner = AlignmentNetwork(
-                in_query_channels=self.args.aligner_out_channels, in_key_channels=self.args.aligner_hidden_channels
+                in_query_channels=self.args.aligner_out_channels, 
+                in_key_channels=self.args.aligner_hidden_channels
             )
             
         #ADDITION FOR MODULAR_VITS
-        self.pitch_text_embedder = TextEmbedderForPitch(
-                self.args.num_chars,
-                self.args.hidden_channels,
-            )
+        #self.pitch_text_embedder = TextEmbedderForPitch(
+        #        self.args.num_chars,
+        #        self.args.hidden_channels,
+        #    )
+        self.pitch_text_encoder = TextEncoder(
+            self.args.num_chars,
+            self.args.hidden_channels,
+            self.args.hidden_channels,
+            self.args.hidden_channels_ffn_text_encoder,
+            self.args.num_heads_text_encoder,
+            self.args.num_layers_text_encoder,
+            self.args.kernel_size_text_encoder,
+            self.args.dropout_p_text_encoder,
+            language_emb_dim=self.embedded_language_dim,
+        )       
 
     @property
     def device(self):
@@ -1243,9 +1256,19 @@ class ModularVits(BaseTTS):
                 mel_lens=kwargs.get('mel_lens'),
                 aux_input=kwargs.get('aux_input')
             )
-               
+            
         elif training_phase==2:
             return self.forward_phase_2(
+                    x=kwargs.get('x'),
+                    x_lengths=kwargs.get('x_lengths'),
+                    pitch=kwargs.get('pitch'),
+                    mel_input=kwargs.get('mel_input'),
+                    mel_lens=kwargs.get('mel_lens'),
+                    aux_input=kwargs.get('aux_input')
+            )  
+            
+        elif training_phase==3:
+            return self.forward_phase_3(
                     x=kwargs.get('x'),
                     x_lengths=kwargs.get('x_lengths'),
                     y = kwargs.get('y'),
@@ -1256,15 +1279,7 @@ class ModularVits(BaseTTS):
                     mel_lens=kwargs.get('mel_lens'),
                     aux_input=kwargs.get('aux_input')
             )
-        elif training_phase==3:
-            return self.forward_phase_3(
-                    x=kwargs.get('x'),
-                    x_lengths=kwargs.get('x_lengths'),
-                    pitch=kwargs.get('pitch'),
-                    mel_input=kwargs.get('mel_input'),
-                    mel_lens=kwargs.get('mel_lens'),
-                    aux_input=kwargs.get('aux_input')
-            )
+
         raise ValueError(" [!] Unexpected training_phase {} in forward function.".format(training_phase))
         
 
@@ -1282,8 +1297,10 @@ class ModularVits(BaseTTS):
             lang_emb = self.emb_l(lid).unsqueeze(-1)
       
         #Text Embedding for pitch aligner purpose only
-        x_mask, x_emb = self.pitch_text_embedder(x, x_lengths, lang_emb=lang_emb)
-            
+        #x_mask, x_emb = self.pitch_text_embedder(x, x_lengths, lang_emb=lang_emb)        
+        _, _, _, x_mask, x_emb = self.pitch_text_encoder(x, x_lengths, lang_emb=lang_emb)
+        
+        
         # pitch duration calculation with generic aligner
         if self.use_aligner:
             mel_mask = torch.unsqueeze(sequence_mask(mel_lens, mel_input.shape[1]), 1).float()
@@ -1301,9 +1318,47 @@ class ModularVits(BaseTTS):
             "alignment_mas": alignment_mas,
             }
         return outputs        
-    
+
     #Modular_vits forward pass for the phase 2
-    def forward_phase_2(  # pylint: disable=dangerous-default-value
+    def forward_phase_2(
+        self,
+        x: torch.tensor,
+        x_lengths: torch.tensor,
+        mel_input: torch.FloatTensor,
+        mel_lens: torch.tensor,
+        pitch: torch.FloatTensor,
+        aux_input={"d_vectors": None, "speaker_ids": None, "language_ids": None},
+    ) -> Dict:
+    
+        sid, g, lid, _ = self._set_cond_input(aux_input)
+        # speaker embedding
+        if self.args.use_speaker_embedding and sid is not None:
+            g = self.emb_g(sid).unsqueeze(-1)  # [b, h, 1]
+
+        # language embedding
+        lang_emb = None
+        if self.args.use_language_embedding and lid is not None:
+            lang_emb = self.emb_l(lid).unsqueeze(-1)
+      
+        #Regular Text Encoding as per core vits but dedicated to pitch
+        x, m_p, logs_p, x_mask, x_emb = self.pitch_text_encoder(x, x_lengths, lang_emb=lang_emb)
+        #x_mask, x_emb = self.pitch_text_embedder(x, x_lengths, lang_emb=lang_emb)
+        
+        # pitch duration calculation with generic aligner
+        mel_mask = torch.unsqueeze(sequence_mask(mel_lens, mel_input.shape[1]), 1).float()
+        o_alignment_dur, alignment_soft, alignment_logprob, alignment_mas = self._forward_pitch_aligner(
+            x_emb, mel_input, x_mask, mel_mask
+        )
+
+        #Pitch predictor pass
+        o_pitch_emb, o_pitch, avg_pitch = self._forward_pitch_predictor(x, x_mask, pitch, o_alignment_dur,g=g)
+    
+        return {"pitch_avg": o_pitch,"pitch_avg_gt": avg_pitch}
+
+
+    
+    #Modular_vits forward pass for the phase 3
+    def forward_phase_3(  # pylint: disable=dangerous-default-value
         self,
         x: torch.tensor,
         x_lengths: torch.tensor,
@@ -1370,14 +1425,14 @@ class ModularVits(BaseTTS):
             
         #COMPUTATION OF THE PITCH EMBEDDING TO BE PASSED TO CORE VITS       
         #Text Embedding for pitch aligner purpose only
-        x_mask_pitch, x_emb_pitch = self.pitch_text_embedder(x, x_lengths, lang_emb=lang_emb)
-        
-        mel_mask = torch.unsqueeze(sequence_mask(mel_lens, mel_input.shape[1]), 1).float()
-        o_alignment_dur, alignment_soft, alignment_logprob, alignment_mas = self._forward_pitch_aligner(
-            x_emb_pitch, mel_input, x_mask_pitch, mel_mask
+        #x_mask, x_emb = self.pitch_text_embedder(x, x_lengths, lang_emb=lang_emb)        
+        o_p_e, m_p, logs_p, x_mask, x_emb = self.pitch_text_encoder(x, x_lengths, lang_emb=lang_emb)
+        #Pitch predictor pass
+        o_pitch_emb, _, _ = self._forward_pitch_predictor(
+            o_en=o_p_e, 
+            x_mask=x_mask, 
+            g=g
         )
-        avg_pitch = average_over_durations(pitch, o_alignment_dur)
-        o_pitch_emb = self.pitch_emb(avg_pitch)
                
         #CORE VITS COMPUTATION
         # Text Encoding
@@ -1446,42 +1501,6 @@ class ModularVits(BaseTTS):
             }
         )
         return outputs
-
-    #Modular_vits forward pass for the phase 3
-    def forward_phase_3(
-        self,
-        x: torch.tensor,
-        x_lengths: torch.tensor,
-        mel_input: torch.FloatTensor,
-        mel_lens: torch.tensor,
-        pitch: torch.FloatTensor,
-        aux_input={"d_vectors": None, "speaker_ids": None, "language_ids": None},
-    ) -> Dict:
-    
-        sid, g, lid, _ = self._set_cond_input(aux_input)
-        # speaker embedding
-        if self.args.use_speaker_embedding and sid is not None:
-            g = self.emb_g(sid).unsqueeze(-1)  # [b, h, 1]
-
-        # language embedding
-        lang_emb = None
-        if self.args.use_language_embedding and lid is not None:
-            lang_emb = self.emb_l(lid).unsqueeze(-1)
-      
-        #Regular Text Encoding as per core vits
-        x, m_p, logs_p, x_mask, x_emb = self.text_encoder(x, x_lengths, lang_emb=lang_emb)
-        #x_mask, x_emb = self.pitch_text_embedder(x, x_lengths, lang_emb=lang_emb)
-        
-        # pitch duration calculation with generic aligner
-        mel_mask = torch.unsqueeze(sequence_mask(mel_lens, mel_input.shape[1]), 1).float()
-        o_alignment_dur, alignment_soft, alignment_logprob, alignment_mas = self._forward_pitch_aligner(
-            x_emb, mel_input, x_mask, mel_mask
-        )
-
-        #Pitch predictor pass
-        o_pitch_emb, o_pitch, avg_pitch = self._forward_pitch_predictor(x, x_mask, pitch, o_alignment_dur,g=g)
-    
-        return {"pitch_avg": o_pitch,"pitch_avg_gt": avg_pitch}
 
     @staticmethod
     def _set_x_lengths(x, aux_input):
@@ -1687,8 +1706,34 @@ class ModularVits(BaseTTS):
             
             return outputs, loss_dict
             
-        #PHASE 2 : CORE VITS
-        elif self.training_phase ==2:
+        #PHASE 2 : PITCH PREDICTOR
+        elif self.training_phase==2:
+            #loading batch
+            pitch = batch["pitch"]
+
+            outputs = self.forward(
+                training_phase=self.training_phase,
+                x=tokens,
+                x_lengths=token_lengths,
+                pitch=pitch,
+                mel_input=mel_input,
+                mel_lens=mel_lens,
+                aux_input={"d_vectors": d_vectors, "speaker_ids": speaker_ids, "language_ids": language_ids},
+            )
+            
+            #Loss computation adapted from forwardtts loss
+            with autocast(enabled=False):  # use float32 for the criterion
+                loss_dict = criterion[optimizer_idx](
+                    pitch_output=outputs["pitch_avg"],
+                    pitch_target=outputs["pitch_avg_gt"],
+                    input_lens=token_lengths,
+            )
+            
+            return outputs, loss_dict
+            
+            
+        #PHASE 3 : CORE VITS
+        elif self.training_phase ==3:
             #loading batch
             spec_lens = batch["spec_lens"]
 
@@ -1780,33 +1825,6 @@ class ModularVits(BaseTTS):
                 return self.model_outputs_cache, loss_dict
 
             raise ValueError(" [!] Unexpected `optimizer_idx`.")
-    
-        
-        #PHASE 3 : PITCH PREDICTOR
-        elif self.training_phase==3:
-            #loading batch
-            pitch = batch["pitch"]
-
-            outputs = self.forward(
-                training_phase=self.training_phase,
-                x=tokens,
-                x_lengths=token_lengths,
-                pitch=pitch,
-                mel_input=mel_input,
-                mel_lens=mel_lens,
-                aux_input={"d_vectors": d_vectors, "speaker_ids": speaker_ids, "language_ids": language_ids},
-            )
-            
-            #Loss computation adapted from forwardtts loss
-            with autocast(enabled=False):  # use float32 for the criterion
-                loss_dict = criterion[optimizer_idx](
-                    pitch_output=outputs["pitch_avg"],
-                    pitch_target=outputs["pitch_avg_gt"],
-                    input_lens=token_lengths,
-            )
-            
-            return outputs, loss_dict
-
 
 
     def _log(self, ap, batch, outputs, name_prefix="train"):  # pylint: disable=unused-argument,no-self-use
@@ -1827,7 +1845,7 @@ class ModularVits(BaseTTS):
         
         #ADDITION FOR FAST_PITCH
         # plot pitch figures
-        if self.args.use_pitch and self.training_phase==3:
+        if self.args.use_pitch and self.training_phase==2:
             pitch_avg = abs(outputs[1]["pitch_avg_gt"][0, 0].data.cpu().numpy())
             pitch_avg_hat = abs(outputs[1]["pitch_avg"][0, 0].data.cpu().numpy())
             tokens = self.tokenizer.decode(batch["tokens"][0].data.cpu().numpy())
@@ -1857,12 +1875,15 @@ class ModularVits(BaseTTS):
         """
         if self.training_phase==1:
             print("nothing to plot in phase 1")
+        
         elif self.training_phase==2:
+            print("nothing to plot in phase 2")
+        
+        elif self.training_phase==3:
             figures, audios = self._log(self.ap, batch, outputs, "train")
             logger.train_figures(steps, figures)
             logger.train_audios(steps, audios, self.ap.sample_rate)
-        elif self.training_phase==3:
-            print("nothing to plot in phase 3")
+
 
     @torch.no_grad()
     def eval_step(self, batch: dict, criterion: nn.Module, optimizer_idx: int):
@@ -1871,12 +1892,15 @@ class ModularVits(BaseTTS):
     def eval_log(self, batch: dict, outputs: dict, logger: "Logger", assets: dict, steps: int) -> None:
         if self.training_phase==1:
             print("No figures or audio to log in phase 1")
+            
         elif self.training_phase==2:
+            print("No figures or audio to log in phase 1")
+            
+        elif self.training_phase==3:
             figures, audios = self._log(self.ap, batch, outputs, "eval")
             logger.eval_figures(steps, figures)
             logger.eval_audios(steps, audios, self.ap.sample_rate)
-        elif self.training_phase==3:
-            print("No figures or audio to log in phase 1")
+
 
     def get_aux_input_from_test_sentences(self, sentence_info):
         if hasattr(self.config, "model_args"):
@@ -2171,6 +2195,11 @@ class ModularVits(BaseTTS):
             return [optimizer_pitch_aligner]
             
         elif self.training_phase==2:
+            print("Using the same optimizer as FastPitch")
+            optimizer_pitch_predictor=get_optimizer(self.config.optimizer_pitch, self.config.optimizer_pitch_params, self.config.lr_pitch_predictor, self.pitch_predictor)
+            return [optimizer_pitch_predictor]
+            
+        elif self.training_phase==3:
             print("Using regular VITS optimizers")
             # select generator parameters
             optimizer0 = get_optimizer(self.config.optimizer, self.config.optimizer_params, self.config.lr_disc, self.disc)
@@ -2181,11 +2210,7 @@ class ModularVits(BaseTTS):
             )
             return [optimizer0, optimizer1]
 
-        elif self.training_phase==3:
-            print("Using the same optimizer as vits generator")
-            optimizer_pitch_predictor=get_optimizer(self.config.optimizer_pitch, self.config.optimizer_pitch_params, self.config.lr_pitch_predictor, self.pitch_predictor)
-            return [optimizer_pitch_predictor]
-        
+
         raise RuntimeError(
             " [!] No optimizer associated with training phase {}".format(self.training_phase)
         )
@@ -2198,12 +2223,14 @@ class ModularVits(BaseTTS):
         """
         if self.training_phase==1:
             return [self.config.lr_pitch_aligner]
-        
+                
         elif self.training_phase==2:
+            return [self.config.lr_pitch_predictor]
+        
+        elif self.training_phase==3:
             return [self.config.lr_disc, self.config.lr_gen]
          
-        elif self.training_phase==3:
-            return  [self.config.lr_pitch_predictor]
+
         raise RuntimeError(
             " [!] No learning rate associated with training phase {}".format(self.training_phase)
         )
@@ -2221,16 +2248,16 @@ class ModularVits(BaseTTS):
         if self.training_phase==1:
             scheduler_pitch_aligner=get_scheduler(self.config.lr_scheduler_pitch_aligner, self.config.lr_scheduler_pitch_aligner_params, optimizer[0])
             return [scheduler_pitch_aligner]
-        
+ 
         elif self.training_phase==2:
+            scheduler_pitch_predictor=get_scheduler(self.config.lr_scheduler_pitch_predictor, self.config.lr_scheduler_pitch_predictor_params, optimizer[0])
+            return  [scheduler_pitch_predictor]
+ 
+        elif self.training_phase==3:
             scheduler_G = get_scheduler(self.config.lr_scheduler_gen, self.config.lr_scheduler_gen_params, optimizer[0])
             scheduler_D = get_scheduler(self.config.lr_scheduler_disc, self.config.lr_scheduler_disc_params, optimizer[1])
             return[scheduler_D,scheduler_G]
 
-        elif self.training_phase==3:
-            scheduler_pitch_predictor=get_scheduler(self.config.lr_scheduler_pitch_predictor, self.config.lr_scheduler_pitch_predictor_params, optimizer[0])
-            return  [scheduler_pitch_predictor]
-            
         raise RuntimeError(
             " [!] No scheduler(s) associated with training phase {}".format(self.training_phase)
         )
@@ -2243,19 +2270,20 @@ class ModularVits(BaseTTS):
             from TTS.tts.layers.losses import (PitchAlignerLoss) 
             print("Launching PitchAlignerloss as criterion")
             return [PitchAlignerLoss(self.config)]
-
-        elif self.training_phase==2:        
+        
+        elif self.training_phase==2:
+            from TTS.tts.layers.losses import (PitchPredictorLoss)
+            print("launching Pitch loss as criterion")
+            return [PitchPredictorLoss(self.config)]
+            
+        elif self.training_phase==3:        
             from TTS.tts.layers.losses import (  # pylint: disable=import-outside-toplevel
                 VitsDiscriminatorLoss,
                 VitsGeneratorLoss,
             )
             print("launching VitsDiscriminatorLoss and VitsGeneratorLoss as criterion")
             return [VitsDiscriminatorLoss(self.config), VitsGeneratorLoss(self.config)]        
-        
-        elif self.training_phase==3:
-            from TTS.tts.layers.losses import (PitchPredictorLoss)
-            print("launching Pitch loss as criterion")
-            return [PitchPredictorLoss(self.config)]
+
         else:
             print("No criterion to launch yet")
             return []
