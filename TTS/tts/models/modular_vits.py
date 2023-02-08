@@ -1544,15 +1544,24 @@ class ModularVits(BaseTTS):
         if self.args.use_language_embedding and lid is not None:
             lang_emb = self.emb_l(lid).unsqueeze(-1)
 
-        #ADDITION FOR FAST_PITCH
-        #Text encoding
-        #x, m_p, logs_p, x_mask = self.text_encoder(x, x_lengths, lang_emb=lang_emb)
+
+        #COMPUTATION OF THE PITCH EMBEDDING TO BE PASSED TO CORE VITS       
+        #Text Embedding for pitch aligner purpose only
+        #x_mask, x_emb = self.pitch_text_embedder(x, x_lengths, lang_emb=lang_emb)        
+        o_p_e, m_p, logs_p, x_mask, x_emb = self.pitch_text_encoder(x, x_lengths, lang_emb=lang_emb)
+        #Pitch predictor pass
+        o_pitch_emb, o_pitch= self._forward_pitch_predictor(
+            o_en=o_p_e, 
+            x_mask=x_mask, 
+            g=g
+        )
+               
+        #CORE VITS COMPUTATION
+        # Text Encoding
         x, m_p, logs_p, x_mask, x_emb = self.text_encoder(x, x_lengths, lang_emb=lang_emb)
-        
-        #ADDITION FOR FAST_PITCH
-        # pitch predictor pass
-        o_pitch_emb, o_pitch = self._forward_pitch_predictor(x, x_mask,g=g)
+        #Adding the inputs from pitch embedding
         x = x + o_pitch_emb
+
 
         if durations is None:
             if self.args.use_sdp:
