@@ -1865,24 +1865,8 @@ class ModularVits(BaseTTS):
 
 
     def _log(self, ap, batch, outputs, name_prefix="train"):  # pylint: disable=unused-argument,no-self-use
-        y_hat = outputs[1]["model_outputs"]
-        y = outputs[1]["waveform_seg"]
-        figures = plot_results(y_hat, y, ap, name_prefix)
-        sample_voice = y_hat[0].squeeze(0).detach().cpu().numpy()
-        audios = {f"{name_prefix}/audio": sample_voice}
-
-        alignments = outputs[1]["alignments"]
-        align_img = alignments[0].data.cpu().numpy().T
-
-        figures.update(
-            {
-                "alignment": plot_alignment(align_img, output_fig=False),
-            }
-        )
         
-        #ADDITION FOR FAST_PITCH
-        # plot pitch figures
-        if self.args.use_pitch and self.training_phase==2:
+        if self.training_phase==2:
             pitch_avg = abs(outputs[1]["pitch_avg_gt"][0, 0].data.cpu().numpy())
             pitch_avg_hat = abs(outputs[1]["pitch_avg"][0, 0].data.cpu().numpy())
             tokens = self.tokenizer.decode(batch["tokens"][0].data.cpu().numpy())
@@ -1891,8 +1875,26 @@ class ModularVits(BaseTTS):
                 "pitch_avg_predicted": plot_avg_pitch(pitch_avg_hat, tokens, output_fig=False),
             }
             figures.update(pitch_figures)
+            return figures
+        
+        elif self.training_phase==3:
+            y_hat = outputs[1]["model_outputs"]
+            y = outputs[1]["waveform_seg"]
+            figures = plot_results(y_hat, y, ap, name_prefix)
+            sample_voice = y_hat[0].squeeze(0).detach().cpu().numpy()
+            audios = {f"{name_prefix}/audio": sample_voice}
+
+            alignments = outputs[1]["alignments"]
+            align_img = alignments[0].data.cpu().numpy().T
+
+            figures.update(
+                {
+                    "alignment": plot_alignment(align_img, output_fig=False),
+                }
+            )
+            return figures, audios
             
-        return figures, audios
+        raise ValueError(" [!] No logs associated with current trainig phase {}.".format(str(self.training_phase)))
 
     def train_log(
         self, batch: dict, outputs: dict, logger: "Logger", assets: dict, steps: int
@@ -1911,10 +1913,11 @@ class ModularVits(BaseTTS):
             Tuple[Dict, np.ndarray]: training plots and output waveform.
         """
         if self.training_phase==1:
-            print("nothing to plot in phase 1")
+            print("nothing to plot in phase 1....yet")
         
         elif self.training_phase==2:
-            print("nothing to plot in phase 2")
+            figures = self._log(self.ap, batch, outputs, "train")
+            logger.train_figures(steps, figures)
         
         elif self.training_phase==3:
             figures, audios = self._log(self.ap, batch, outputs, "train")
