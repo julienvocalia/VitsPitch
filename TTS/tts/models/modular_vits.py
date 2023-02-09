@@ -605,9 +605,6 @@ class ModularVitsArgs(Coqpit):
             will be used to upsampling the latent variable z with the sampling rate `encoder_sample_rate`
             to the `config.audio.sample_rate`. If it is False you will need to add extra
             `upsample_rates_decoder` to match the shape. Defaults to True.
-            
-        use_pitch (bool):
-            Use pitch predictor to learn the pitch. Defaults to True.
 
         pitch_predictor_hidden_channels (int):
             Number of hidden channels in the pitch predictor. Defaults to 256.
@@ -688,7 +685,6 @@ class ModularVitsArgs(Coqpit):
     reinit_text_encoder: bool = False
     #ADDITION FOR FAST_PITCH
     use_aligner: bool = True
-    use_pitch: bool = True
     pitch_predictor_hidden_channels: int = 256
     pitch_predictor_kernel_size: int = 3
     pitch_predictor_dropout_p: float = 0.1
@@ -752,7 +748,6 @@ class ModularVits(BaseTTS):
         self.max_inference_len = self.args.max_inference_len
         self.spec_segment_size = self.args.spec_segment_size
         #ADDITION FOR FAST_PITCH
-        self.use_pitch = self.args.use_pitch
         self.use_aligner = self.args.use_aligner
         self.compute_f0 = self.config.compute_f0
         self.f0_cache_path=self.config.f0_cache_path
@@ -870,22 +865,21 @@ class ModularVits(BaseTTS):
             )
             
         #ADDITION FOR FAST_PITCH
-        if self.args.use_pitch:
-            self.pitch_predictor = DurationPredictor(
-            #MODIFICATION FOR FAST_PITCH
-                #self.args.hidden_channels + self.embedded_speaker_dim,
-                self.args.hidden_channels,
-                self.args.pitch_predictor_hidden_channels,
-                self.args.pitch_predictor_kernel_size,
-                self.args.pitch_predictor_dropout_p,
-                #addition for speaker embedding
-                cond_channels=self.embedded_speaker_dim,
-            )
-            self.pitch_conv1d = nn.Conv1d(
-                1,
-                self.args.hidden_channels,
-                kernel_size=self.args.pitch_embedding_kernel_size,
-                padding=int((self.args.pitch_embedding_kernel_size - 1) / 2),
+        self.pitch_predictor = DurationPredictor(
+        #MODIFICATION FOR FAST_PITCH
+            #self.args.hidden_channels + self.embedded_speaker_dim,
+            self.args.hidden_channels,
+            self.args.pitch_predictor_hidden_channels,
+            self.args.pitch_predictor_kernel_size,
+            self.args.pitch_predictor_dropout_p,
+            #addition for speaker embedding
+            cond_channels=self.embedded_speaker_dim,
+        )
+        self.pitch_conv1d = nn.Conv1d(
+            1,
+            self.args.hidden_channels,
+            kernel_size=self.args.pitch_embedding_kernel_size,
+            padding=int((self.args.pitch_embedding_kernel_size - 1) / 2),
             )
         if self.args.use_aligner:
             self.pitch_aligner = AlignmentNetwork(
@@ -1777,7 +1771,7 @@ class ModularVits(BaseTTS):
             if optimizer_idx == 0:
                 spec = batch["spec"]
                 waveform = batch["waveform"]
-                pitch = batch["pitch"] if self.args.use_pitch else None
+                pitch = batch["pitch"]
                 
                 # generator pass
                 outputs = self.forward(
