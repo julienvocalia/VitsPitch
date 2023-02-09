@@ -1035,6 +1035,7 @@ class ModularVits(BaseTTS):
     def _freeze_layers(self):
     
         if self.freeze_prior_encoder:
+            print("freezing prior encoder")
             for param in self.text_encoder.parameters():
                 param.requires_grad = False
 
@@ -1043,44 +1044,54 @@ class ModularVits(BaseTTS):
                     param.requires_grad = False
 
         if self.freeze_post_encoder:
+            print("freezing post encoder")
             for param in self.posterior_encoder.parameters():
                 param.requires_grad = False
 
         if self.freeze_SDP:
+            print("freezing SDP")
             for param in self.duration_predictor.parameters():
                 param.requires_grad = False
 
         if self.freeze_flow_decoder:
+            print("freezing flow decoder")
             for param in self.flow.parameters():
                 param.requires_grad = False
 
         if self.freeze_waveform_decoder:
+            print("freezing waveform decoder")
             for param in self.waveform_decoder.parameters():
                 param.requires_grad = False
         
         if self.freeze_pitch_predictor:
+            print("freezing pitch predictor")
             for param in self.pitch_predictor.parameters():
                 param.requires_grad = False
         
         if self.freeze_pitch_embedding:
+            print("freezing pitch text embedder")
             for name, param in self.pitch_text_encoder.named_parameters():
                 if name=="emb.weight":
                     param.requires_grad=False
                 
         if self.freeze_pitch_encoding:
+            print("freezing pitch text encoder")
             for name, param in self.pitch_text_encoder.named_parameters():
                 if name!="emb.weight":
                     param.requires_grad=False
         
         if self.freeze_pitch_conv1d:
+            print("freezing pitch conv1d")
             for param in self.pitch_conv1d.parameters():
                 param.requires_grad = False
         
         if self.freeze_pitch_aligner:
+            print("freezing pitch aligner")
             for param in self.pitch_aligner.parameters():
                 param.requires_grad = False
                 
         if self.freeze_disc:
+            print("freezing discriminator")
             for param in self.disc.parameters():
                 param.requires_grad = False
                 
