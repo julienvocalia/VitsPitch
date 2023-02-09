@@ -161,7 +161,7 @@ class ModularVitsConfig(BaseTTSConfig):
     lr_scheduler_pitch_aligner_params: dict = field(default_factory=lambda: {"warmup_steps": 4000})
     
     #as per fast_pitch_config
-    lr_pitch_predictor: float = 0.0002 #phase 3
+    lr_pitch_predictor: float = 1e-4 #phase 3
     lr_scheduler_pitch_predictor: str = "NoamLR"
     lr_scheduler_pitch_predictor_params: dict = field(default_factory=lambda: {"warmup_steps": 4000})
 
