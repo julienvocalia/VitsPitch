@@ -1317,8 +1317,8 @@ class ModularVits(BaseTTS):
                     waveform = kwargs.get('waveform'),
                     mel_input=kwargs.get('mel_input'),
                     mel_lens=kwargs.get('mel_lens'),
-                    aux_input=kwargs.get('aux_input') 
-
+                    aux_input=kwargs.get('aux_input'))
+                    
         raise ValueError(" [!] Unexpected training_phase {} in forward function.".format(training_phase))
         
 
@@ -1582,7 +1582,7 @@ class ModularVits(BaseTTS):
         x = x + o_pitch_emb
         
         #SDP Calculation
-        if durations is None:
+        if dr is None:
             if self.args.use_sdp:
                 logw = self.duration_predictor(
                     x,
@@ -1619,8 +1619,8 @@ class ModularVits(BaseTTS):
         # upsampling if needed
         z_up, _, _, y_mask = self.upsampling_z(z, y_lengths=y_lengths, y_mask=y_mask)
        
-        #WAVEFORM DECODER
-        o = self.waveform_decoder((z_up * y_mask)[:, :, : self.max_inference_len], g=g)
+
+        
         
         #SLICES FOR WAVEFORM SEGMENTS
         # select a random feature segment for the waveform decoder
@@ -1629,6 +1629,8 @@ class ModularVits(BaseTTS):
         # interpolate z if needed
         z_slice, spec_segment_size, slice_ids, _ = self.upsampling_z(z_slice, slice_ids=slice_ids)
         
+        #WAVEFORM DECODER
+        o = self.waveform_decoder(z_slice, g=g)
         
         wav_seg = segment(
             waveform,
@@ -1637,12 +1639,30 @@ class ModularVits(BaseTTS):
             pad_short=True,
         ) 
         
+        
+        if self.args.use_speaker_encoder_as_loss and self.speaker_manager.encoder is not None:
+            # concate generated and GT waveforms
+            wavs_batch = torch.cat((wav_seg, o), dim=0)
+
+            # resample audio to speaker encoder sample_rate
+            # pylint: disable=W0105
+            if self.audio_transform is not None:
+                wavs_batch = self.audio_transform(wavs_batch)
+
+            pred_embs = self.speaker_manager.encoder.forward(wavs_batch, l2_norm=True)
+
+            # split generated and GT speaker embeddings
+            gt_spk_emb, syn_spk_emb = torch.chunk(pred_embs, 2, dim=0)
+        else:
+            gt_spk_emb, syn_spk_emb = None, None
+        
         outputs = {
             "model_outputs": o,
             "waveform_seg": wav_seg,
             "gt_spk_emb": gt_spk_emb,
             "syn_spk_emb": syn_spk_emb,
         }
+        return outputs
     
 
     @staticmethod
@@ -2483,7 +2503,7 @@ class ModularVits(BaseTTS):
             scheduler_pitch_predictor=get_scheduler(self.config.lr_scheduler_pitch_predictor, self.config.lr_scheduler_pitch_predictor_params, optimizer[0])
             return  [scheduler_pitch_predictor]
  
-        elif self.training_phase==3 and self.training_phase==4:
+        elif self.training_phase==3 or self.training_phase==4:
             scheduler_G = get_scheduler(self.config.lr_scheduler_gen, self.config.lr_scheduler_gen_params, optimizer[0])
             scheduler_D = get_scheduler(self.config.lr_scheduler_disc, self.config.lr_scheduler_disc_params, optimizer[1])
             return[scheduler_D,scheduler_G]
@@ -2514,7 +2534,7 @@ class ModularVits(BaseTTS):
             print("launching VitsDiscriminatorLoss and VitsGeneratorLoss as criterion")
             return [VitsDiscriminatorLoss(self.config), VitsGeneratorLoss(self.config)]        
 
-       elif self.training_phase==4:        
+        elif self.training_phase==4:        
             from TTS.tts.layers.losses import (  # pylint: disable=import-outside-toplevel
                 VitsDiscriminatorLoss,
                 VitsReducedGeneratorLoss,
@@ -2600,7 +2620,7 @@ class ModularVits(BaseTTS):
         """Schedule binary loss weight."""
         if trainer.epochs_done>0:
             self.binary_loss_weight = min(trainer.epochs_done / self.config.binary_loss_warmup_epochs, 1.0) * 1.0
-        elif:
+        else:
             self.binary_loss_weight = 0.0
 ##################################
 # VITS CHARACTERS
