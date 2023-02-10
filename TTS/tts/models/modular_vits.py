@@ -24,7 +24,6 @@ from TTS.tts.layers.glow_tts.duration_predictor import DurationPredictor
 from TTS.tts.layers.vits.discriminator import VitsDiscriminator
 from TTS.tts.layers.vitspitch.networks import PosteriorEncoder, ResidualCouplingBlocks, TextEncoder
 #ADDITION FOR MODULAR_VITS
-from TTS.tts.layers.modularvits.networks import TextEmbedderForPitch
 from TTS.tts.layers.vits.stochastic_duration_predictor import StochasticDurationPredictor
 from TTS.tts.models.base_tts import BaseTTS
 from TTS.tts.utils.helpers import generate_path, maximum_path, rand_segments, segment, sequence_mask, average_over_durations
@@ -887,11 +886,6 @@ class ModularVits(BaseTTS):
                 in_key_channels=self.args.aligner_hidden_channels
             )
             
-        #ADDITION FOR MODULAR_VITS
-        #self.pitch_text_embedder = TextEmbedderForPitch(
-        #        self.args.num_chars,
-        #        self.args.hidden_channels,
-        #    )
         self.pitch_text_encoder = TextEncoder(
             self.args.num_chars,
             self.args.hidden_channels,
