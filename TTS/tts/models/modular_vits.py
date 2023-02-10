@@ -2393,8 +2393,10 @@ class ModularVits(BaseTTS):
     #ADDITION FOR FAST_PITCH
     def on_train_step_start(self, trainer):
         """Schedule binary loss weight."""
-        self.binary_loss_weight = min(trainer.epochs_done / self.config.binary_loss_warmup_epochs, 1.0) * 1.0
-        
+        if trainer.epochs_done>0:
+            self.binary_loss_weight = min(trainer.epochs_done / self.config.binary_loss_warmup_epochs, 1.0) * 1.0
+        elif:
+            self.binary_loss_weight = 0.0
 ##################################
 # VITS CHARACTERS
 ##################################
