@@ -2086,7 +2086,7 @@ class ModularVits(BaseTTS):
             figures.update(pitch_figures)
             return figures
         
-        elif self.training_phase==3 or self.tranining_phase==4:
+        elif self.training_phase==3 or self.training_phase==4:
             y_hat = outputs[1]["model_outputs"]
             y = outputs[1]["waveform_seg"]
             figures = plot_results(y_hat, y, ap, name_prefix)
