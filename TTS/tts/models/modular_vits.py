@@ -2086,7 +2086,7 @@ class ModularVits(BaseTTS):
             figures.update(pitch_figures)
             return figures
         
-        elif self.training_phase==3 or self.training_phase==4:
+        elif self.training_phase==3:
             y_hat = outputs[1]["model_outputs"]
             y = outputs[1]["waveform_seg"]
             figures = plot_results(y_hat, y, ap, name_prefix)
@@ -2101,6 +2101,15 @@ class ModularVits(BaseTTS):
                     "alignment": plot_alignment(align_img, output_fig=False),
                 }
             )
+            return figures, audios
+            
+        elif self.training_phase==4:
+            y_hat = outputs[1]["model_outputs"]
+            y = outputs[1]["waveform_seg"]
+            figures = plot_results(y_hat, y, ap, name_prefix)
+            sample_voice = y_hat[0].squeeze(0).detach().cpu().numpy()
+            audios = {f"{name_prefix}/audio": sample_voice}
+
             return figures, audios
             
         raise ValueError(" [!] No logs associated with current trainig phase {}.".format(str(self.training_phase)))
