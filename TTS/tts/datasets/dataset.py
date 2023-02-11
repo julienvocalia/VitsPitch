@@ -367,7 +367,7 @@ class TTSDataset(Dataset):
             print(" | > Avg audio length: {}".format(np.mean(audio_lengths)))
             print(f" | > Num. instances discarded samples: {len(ignore_idx)}")
             print(" | > Batch group size: {}.".format(self.batch_group_size))
-            print(" | > Traiing Phase: {}.".format(self.training_phase))
+            print(" | > Training Phase: {}.".format(self.training_phase))
 
     @staticmethod
     def _sort_batch(batch, text_lengths):
