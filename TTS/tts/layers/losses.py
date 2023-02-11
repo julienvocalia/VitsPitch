@@ -988,7 +988,7 @@ class VitsReducedGeneratorLoss(nn.Module):
         loss_gen = self.generator_loss(scores_fake=scores_disc_fake)[0] * self.gen_loss_alpha
         
         #if we just want to track the mel loss without using it
-        if self.mel_loss_alpha==0:
+        if self.mel_loss_alpha==0.0:
             loss_mel = torch.nn.functional.l1_loss(mel_slice, mel_slice_hat)
             loss = loss_feat + loss_gen
         #if we want to use the mel loss
