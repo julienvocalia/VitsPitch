@@ -1565,8 +1565,7 @@ class ModularVits(BaseTTS):
             
             
         #COMPUTATION OF THE PITCH EMBEDDING TO BE PASSED TO CORE VITS       
-        #Text Embedding for pitch aligner purpose only
-        #x_mask, x_emb = self.pitch_text_embedder(x, x_lengths, lang_emb=lang_emb)        
+        #Text Encoding for pitch aligner purpose only
         o_p_e, m_p, logs_p, x_mask, x_emb = self.pitch_text_encoder(x, x_lengths, lang_emb=lang_emb)
         #Pitch predictor pass
         o_pitch_emb, o_pitch= self._forward_pitch_predictor(
@@ -1619,9 +1618,6 @@ class ModularVits(BaseTTS):
         # upsampling if needed
         z_up, _, _, y_mask = self.upsampling_z(z, y_lengths=y_lengths, y_mask=y_mask)
        
-
-        
-        
         #SLICES FOR WAVEFORM SEGMENTS
         # select a random feature segment for the waveform decoder
         z_slice, slice_ids = rand_segments(z, y_lengths, self.spec_segment_size, let_short_samples=True, pad_short=True)
@@ -1710,8 +1706,7 @@ class ModularVits(BaseTTS):
 
 
         #COMPUTATION OF THE PITCH EMBEDDING TO BE PASSED TO CORE VITS       
-        #Text Embedding for pitch aligner purpose only
-        #x_mask, x_emb = self.pitch_text_embedder(x, x_lengths, lang_emb=lang_emb)        
+        #Text Encoding for pitch aligner purpose only
         o_p_e, m_p, logs_p, x_mask, x_emb = self.pitch_text_encoder(x, x_lengths, lang_emb=lang_emb)
         #Pitch predictor pass
         o_pitch_emb, o_pitch= self._forward_pitch_predictor(
@@ -2068,15 +2063,10 @@ class ModularVits(BaseTTS):
                     loss_dict = criterion[optimizer_idx](
                         mel_slice=mel_slice.float(),
                         mel_slice_hat=mel_slice_hat.float(),
-                        #z_p=self.model_outputs_cache["z_p"].float(),
-                        #logs_q=self.model_outputs_cache["logs_q"].float(),
-                        #m_p=self.model_outputs_cache["m_p"].float(),
-                        #logs_p=self.model_outputs_cache["logs_p"].float(),
                         z_len=spec_lens,
                         scores_disc_fake=scores_disc_fake,
                         feats_disc_fake=feats_disc_fake,
                         feats_disc_real=feats_disc_real,
-                        #loss_duration=self.model_outputs_cache["loss_duration"],
                         use_speaker_encoder_as_loss=self.args.use_speaker_encoder_as_loss,
                         gt_spk_emb=self.model_outputs_cache["gt_spk_emb"],
                         syn_spk_emb=self.model_outputs_cache["syn_spk_emb"],
