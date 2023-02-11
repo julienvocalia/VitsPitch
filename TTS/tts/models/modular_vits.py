@@ -1976,8 +1976,8 @@ class ModularVits(BaseTTS):
                 # compute losses
                 with autocast(enabled=False):  # use float32 for the criterion
                     loss_dict = criterion[optimizer_idx](
-                        mel_slice_hat=mel_slice.float(),
-                        mel_slice=mel_slice_hat.float(),
+                        mel_slice=mel_slice.float(),
+                        mel_slice_hat=mel_slice_hat.float(),
                         z_p=self.model_outputs_cache["z_p"].float(),
                         logs_q=self.model_outputs_cache["logs_q"].float(),
                         m_p=self.model_outputs_cache["m_p"].float(),
@@ -2043,7 +2043,20 @@ class ModularVits(BaseTTS):
                     else:
                         spec_segment_size = self.spec_segment_size
 
-
+                mel_slice = segment(
+                    mel.float(), self.model_outputs_cache["slice_ids"], spec_segment_size, pad_short=True
+                )
+                mel_slice_hat = wav_to_mel(
+                    y=self.model_outputs_cache["model_outputs"].float(),
+                    n_fft=self.config.audio.fft_size,
+                    sample_rate=self.config.audio.sample_rate,
+                    num_mels=self.config.audio.num_mels,
+                    hop_length=self.config.audio.hop_length,
+                    win_length=self.config.audio.win_length,
+                    fmin=self.config.audio.mel_fmin,
+                    fmax=self.config.audio.mel_fmax,
+                    center=False,
+                )
                 # compute discriminator scores and features
                 scores_disc_fake, feats_disc_fake, _, feats_disc_real = self.disc(
                     self.model_outputs_cache["model_outputs"], self.model_outputs_cache["waveform_seg"]
@@ -2052,8 +2065,8 @@ class ModularVits(BaseTTS):
                 # compute losses
                 with autocast(enabled=False):  # use float32 for the criterion
                     loss_dict = criterion[optimizer_idx](
-                        #mel_slice_hat=mel_slice.float(),
-                        #mel_slice=mel_slice_hat.float(),
+                        mel_slice=mel_slice.float(),
+                        mel_slice_hat=mel_slice_hat.float(),
                         #z_p=self.model_outputs_cache["z_p"].float(),
                         #logs_q=self.model_outputs_cache["logs_q"].float(),
                         #m_p=self.model_outputs_cache["m_p"].float(),

@@ -957,6 +957,8 @@ class VitsReducedGeneratorLoss(nn.Module):
 
     def forward(
         self,
+        mel_slice,
+        mel_slice_hat,
         z_len,
         scores_disc_fake,
         feats_disc_fake,
@@ -980,8 +982,19 @@ class VitsReducedGeneratorLoss(nn.Module):
         loss_feat = (
             self.feature_loss(feats_real=feats_disc_real, feats_generated=feats_disc_fake) * self.feat_loss_alpha
         )
+        
+        
         loss_gen = self.generator_loss(scores_fake=scores_disc_fake)[0] * self.gen_loss_alpha
-        loss = loss_feat + loss_gen
+        
+        #if we just want to track the mel loss without using it
+        if self.mel_loss_alpha==0:
+            loss_mel = torch.nn.functional.l1_loss(mel_slice, mel_slice_hat)
+            loss = loss_feat + loss_gen
+        #if we want to use the mel loss
+        else:
+            loss_mel = torch.nn.functional.l1_loss(mel_slice, mel_slice_hat) * self.mel_loss_alpha
+            loss = loss_feat + loss_gen + loss_mel
+        
 
         if use_speaker_encoder_as_loss:
             loss_se = self.cosine_similarity_loss(gt_spk_emb, syn_spk_emb) * self.spk_encoder_loss_alpha
@@ -990,6 +1003,7 @@ class VitsReducedGeneratorLoss(nn.Module):
         # pass losses to the dict
         return_dict["loss_gen"] = loss_gen
         return_dict["loss_feat"] = loss_feat
+        return_dict["loss_mel"] = loss_mel
         return_dict["loss"] = loss
         return return_dict
 
