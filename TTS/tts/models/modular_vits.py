@@ -1661,6 +1661,7 @@ class ModularVits(BaseTTS):
             "waveform_seg": wav_seg,
             "gt_spk_emb": gt_spk_emb,
             "syn_spk_emb": syn_spk_emb,
+            "slice_ids" : slice_ids,
         }
         return outputs
     
