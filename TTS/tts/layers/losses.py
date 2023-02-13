@@ -918,6 +918,7 @@ class VitsReducedGeneratorLoss(nn.Module):
         self.feat_loss_alpha = c.feat_loss_alpha
         self.spk_encoder_loss_alpha = c.speaker_encoder_loss_alpha
         self.mel_loss_alpha = c.mel_loss_alpha
+        self.mel_loss_alpha_gan=c.mel_loss_alpha_gan
         self.stft = TorchSTFT(
             c.audio.fft_size,
             c.audio.hop_length,
@@ -987,24 +988,26 @@ class VitsReducedGeneratorLoss(nn.Module):
         
         loss_gen = self.generator_loss(scores_fake=scores_disc_fake)[0] * self.gen_loss_alpha
         
-        #if we just want to track the mel loss without using it
-        if self.mel_loss_alpha==0.0:
-            loss_mel = torch.nn.functional.l1_loss(mel_slice, mel_slice_hat)
-            loss = loss_feat + loss_gen
-        #if we want to use the mel loss
-        else:
-            loss_mel = torch.nn.functional.l1_loss(mel_slice, mel_slice_hat) * self.mel_loss_alpha
-            loss = loss_feat + loss_gen + loss_mel
+        loss = loss_feat + loss_gen
         
+        #we track a loss_mel similar to phase 3 only for display, but it will not be added to total loss
+        loss_mel_legacy = torch.nn.functional.l1_loss(mel_slice, mel_slice_hat) * self.mel_loss_alpha
+        
+        #we use a different alpha for the loss_mel actually used in the current phase
+        if self.mel_loss_alpha_gan=!0.0:
+            loss_mel_reduced=torch.nn.functional.l1_loss(mel_slice, mel_slice_hat) * self.mel_loss_alpha_gan
+            return_dict["loss_mel_reduced"]=loss_mel_reduced
+            loss=loss + loss_mel_reduced
 
         if use_speaker_encoder_as_loss:
             loss_se = self.cosine_similarity_loss(gt_spk_emb, syn_spk_emb) * self.spk_encoder_loss_alpha
             loss = loss + loss_se
             return_dict["loss_spk_encoder"] = loss_se
+
         # pass losses to the dict
         return_dict["loss_gen"] = loss_gen
         return_dict["loss_feat"] = loss_feat
-        return_dict["loss_mel"] = loss_mel
+        return_dict["loss_mel"] = loss_mel_legacy
         return_dict["loss"] = loss
         return return_dict
 

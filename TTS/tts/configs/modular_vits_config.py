@@ -70,6 +70,9 @@ class ModularVitsConfig(BaseTTSConfig):
         mel_loss_alpha (float):
             Loss weight for the mel loss. Defaults to 45.0.
 
+        mel_loss_alpha_gan (float):
+            Loss weight for the mel loss when vites is in full core gan. Defaults to 45.0.
+
         return_wav (bool):
             If true, data loader returns the waveform as well as the other outputs. Do not change. Defaults to `True`.
 
@@ -172,6 +175,7 @@ class ModularVitsConfig(BaseTTSConfig):
     gen_loss_alpha: float = 1.0
     feat_loss_alpha: float = 1.0
     mel_loss_alpha: float = 45.0
+    mel_loss_alpha_gan: float = 45.0
     dur_loss_alpha: float = 1.0
     speaker_encoder_loss_alpha: float = 1.0
     #ADDITION FROM FAST_PITCH
