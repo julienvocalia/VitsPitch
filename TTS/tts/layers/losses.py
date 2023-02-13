@@ -994,7 +994,7 @@ class VitsReducedGeneratorLoss(nn.Module):
         loss_mel_legacy = torch.nn.functional.l1_loss(mel_slice, mel_slice_hat) * self.mel_loss_alpha
         
         #we use a different alpha for the loss_mel actually used in the current phase
-        if self.mel_loss_alpha_gan=!0.0:
+        if self.mel_loss_alpha_gan!=0.0:
             loss_mel_reduced=torch.nn.functional.l1_loss(mel_slice, mel_slice_hat) * self.mel_loss_alpha_gan
             return_dict["loss_mel_reduced"]=loss_mel_reduced
             loss=loss + loss_mel_reduced
