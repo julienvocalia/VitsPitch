@@ -2630,7 +2630,7 @@ class ModularVits(BaseTTS):
             optimizer_dural = get_optimizer(
                 self.config.optimizer, self.config.optimizer_params, self.config.lr_gen, parameters=gen_parameters
             )
-            return [optimizerdural]
+            return [optimizer_dural]
 
 
         raise RuntimeError(
