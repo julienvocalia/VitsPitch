@@ -2248,11 +2248,7 @@ class ModularVits(BaseTTS):
             alignments = outputs[0]["alignments"]
             align_img = alignments[0].data.cpu().numpy().T
 
-            figures.update(
-                {
-                    "alignment": plot_alignment(align_img, output_fig=False),
-                }
-            )
+            figures={"alignment": plot_alignment(align_img, output_fig=False),}
             return figures        
 
 
