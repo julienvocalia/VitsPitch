@@ -2627,10 +2627,10 @@ class ModularVits(BaseTTS):
             print("Using regular VITS Generator Parameters")
             # select generator parameters
             gen_parameters = chain(params for k, params in self.named_parameters() if not k.startswith("disc."))
-            optimizer1 = get_optimizer(
+            optimizer_dural = get_optimizer(
                 self.config.optimizer, self.config.optimizer_params, self.config.lr_gen, parameters=gen_parameters
             )
-            return [optimizer1]
+            return [optimizerdural]
 
 
         raise RuntimeError(
