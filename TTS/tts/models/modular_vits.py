@@ -2626,8 +2626,11 @@ class ModularVits(BaseTTS):
         elif self.training_phase==5:
             print("Using regular VITS Generator Parameters")
             # select generator parameters
-            optimizer0 = get_optimizer(self.config.optimizer, self.config.optimizer_params, self.config.lr_disc, self.disc)
-            return [optimizer0]
+            gen_parameters = chain(params for k, params in self.named_parameters() if not k.startswith("disc."))
+            optimizer1 = get_optimizer(
+                self.config.optimizer, self.config.optimizer_params, self.config.lr_gen, parameters=gen_parameters
+            )
+            return [optimizer1]
 
 
         raise RuntimeError(
