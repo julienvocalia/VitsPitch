@@ -801,6 +801,20 @@ class ModularVits(BaseTTS):
             self.freeze_flow_decoder=False
             self.freeze_waveform_decoder=False
             self.freeze_disc=False
+            
+            
+        elif self.training_phase==5:
+            self.freeze_pitch_predictor=True
+            self.freeze_pitch_embedding=True
+            self.freeze_pitch_encoding=True
+            self.freeze_pitch_conv1d=True
+            self.freeze_pitch_aligner=True
+            self.freeze_prior_encoder=True
+            self.freeze_post_encoder=True
+            self.freeze_SDP=False
+            self.freeze_flow_decoder=True
+            self.freeze_waveform_decoder=True
+            self.freeze_disc=True
 
 
         self.text_encoder = TextEncoder(
@@ -1318,7 +1332,17 @@ class ModularVits(BaseTTS):
                     mel_input=kwargs.get('mel_input'),
                     mel_lens=kwargs.get('mel_lens'),
                     aux_input=kwargs.get('aux_input'))
-                    
+        
+        elif training_phase==5:
+            return self.forward_phase_5(
+                    x=kwargs.get('x'),
+                    x_lengths=kwargs.get('x_lengths'),
+                    y = kwargs.get('y'),
+                    y_lengths= kwargs.get('y_lengths'),
+                    aux_input=kwargs.get('aux_input')
+            )        
+
+        
         raise ValueError(" [!] Unexpected training_phase {} in forward function.".format(training_phase))
         
 
@@ -1661,6 +1685,77 @@ class ModularVits(BaseTTS):
         }
         return outputs
     
+
+    #Modular_vits forward pass for the phase 5 (inspired by forward of phase 3
+    def forward_phase_5(  # pylint: disable=dangerous-default-value
+        self,
+        x: torch.tensor,
+        x_lengths: torch.tensor,
+        y: torch.tensor,
+        y_lengths: torch.tensor,
+        aux_input={"d_vectors": None, "speaker_ids": None, "language_ids": None},
+    ) -> Dict:
+        outputs = {}
+        sid, g, lid, _ = self._set_cond_input(aux_input)
+        # speaker embedding
+        if self.args.use_speaker_embedding and sid is not None:
+            g = self.emb_g(sid).unsqueeze(-1)  # [b, h, 1]
+
+        # language embedding
+        lang_emb = None
+        if self.args.use_language_embedding and lid is not None:
+            lang_emb = self.emb_l(lid).unsqueeze(-1)
+            
+            
+        #COMPUTATION OF THE PITCH EMBEDDING TO BE PASSED TO CORE VITS       
+        #Text Embedding for pitch aligner purpose only
+        #x_mask, x_emb = self.pitch_text_embedder(x, x_lengths, lang_emb=lang_emb)        
+        o_p_e, m_p, logs_p, x_mask, x_emb = self.pitch_text_encoder(x, x_lengths, lang_emb=lang_emb)
+        #Pitch predictor pass
+        o_pitch_emb, o_pitch= self._forward_pitch_predictor(
+            o_en=o_p_e, 
+            x_mask=x_mask, 
+            g=g
+        )
+               
+        #CORE VITS COMPUTATION
+        # Text Encoding
+        x, m_p, logs_p, x_mask, x_emb = self.text_encoder(x, x_lengths, lang_emb=lang_emb)
+        #Adding the inputs from pitch embedding
+        x = x + o_pitch_emb
+       
+        # posterior encoder
+        z, m_q, logs_q, y_mask = self.posterior_encoder(y, y_lengths, g=g)
+
+        # flow layers
+        z_p = self.flow(z, y_mask, g=g)
+
+        # duration predictor
+        outputs, attn = self.forward_mas(outputs, z_p, m_p, logs_p, x, x_mask, y_mask, g=g, lang_emb=lang_emb)
+
+        # expand prior
+        m_p = torch.einsum("klmn, kjm -> kjn", [attn, m_p])
+        logs_p = torch.einsum("klmn, kjm -> kjn", [attn, logs_p])
+
+        if self.args.use_speaker_encoder_as_loss and self.speaker_manager.encoder is not None:
+            raise Exception("using speaker encoder as loss is not implemented for this phase")
+        else:
+            gt_spk_emb, syn_spk_emb = None, None
+
+        outputs.update(
+            {
+                "alignments": attn.squeeze(1),
+                "m_p": m_p,
+                "logs_p": logs_p,
+                "z_p": z_p,
+                "logs_q": logs_q,
+                "gt_spk_emb": gt_spk_emb,
+                "syn_spk_emb": syn_spk_emb,
+            }
+        )
+        return outputs
+
+
 
     @staticmethod
     def _set_x_lengths(x, aux_input):
@@ -2073,7 +2168,39 @@ class ModularVits(BaseTTS):
                     )
 
                 return self.model_outputs_cache, loss_dict
+                
+        #PHASE  : VITS DURAL
+        elif self.training_phase ==5:
+            #loading batch
+            spec_lens = batch["spec_lens"]
+            spec = batch["spec"]
+            
+            # generator pass
+            outputs = self.forward(
+                training_phase=self.training_phase,
+                x=tokens,
+                x_lengths=token_lengths,
+                y = spec,
+                y_lengths= spec_lens,
+                aux_input={"d_vectors": d_vectors, "speaker_ids": speaker_ids, "language_ids": language_ids},
+            )
 
+            # compute losses
+            with autocast(enabled=False):  # use float32 for the criterion
+                loss_dict = criterion[optimizer_idx](
+                    z_p=self.outputs["z_p"].float(),
+                    logs_q=self.outputs["logs_q"].float(),
+                    m_p=self.outputs["m_p"].float(),
+                    logs_p=self.outputs["logs_p"].float(),
+                    z_len=spec_lens,
+                    loss_duration=self.outputs["loss_duration"],
+                    use_speaker_encoder_as_loss=self.args.use_speaker_encoder_as_loss,
+                    gt_spk_emb=self.outputs["gt_spk_emb"],
+                    syn_spk_emb=self.outputs["syn_spk_emb"],
+                )
+
+            return outputs, loss_dict
+ 
         raise ValueError(" [!] Unexpected `optimizer_idx`.")
 
 
@@ -2116,6 +2243,20 @@ class ModularVits(BaseTTS):
 
             return figures, audios
             
+        elif self.training_phase==5:
+
+            alignments = outputs[1]["alignments"]
+            align_img = alignments[0].data.cpu().numpy().T
+
+            figures.update(
+                {
+                    "alignment": plot_alignment(align_img, output_fig=False),
+                }
+            )
+            return figures        
+
+
+        
         raise ValueError(" [!] No logs associated with current trainig phase {}.".format(str(self.training_phase)))
 
     def train_log(
@@ -2142,10 +2283,15 @@ class ModularVits(BaseTTS):
             #figures = self._log(self.ap, batch, outputs, "train")
             #logger.train_figures(steps, figures)
         
-        elif self.training_phase==3 or self.training_phase==4:
+        elif self.training_phase==3 or self.training_phase==4 or self.training_phase==5:
             figures, audios = self._log(self.ap, batch, outputs, "train")
             logger.train_figures(steps, figures)
             logger.train_audios(steps, audios, self.ap.sample_rate)
+            
+        elif self.training_phase==5:
+            figures = self._log(self.ap, batch, outputs, "train")
+            logger.train_figures(steps, figures)
+            
 
 
     @torch.no_grad()
@@ -2164,6 +2310,9 @@ class ModularVits(BaseTTS):
             logger.eval_figures(steps, figures)
             logger.eval_audios(steps, audios, self.ap.sample_rate)
 
+        elif self.training_phase==5:
+            figures = self._log(self.ap, batch, outputs, "eval")
+            logger.train_figures(steps, figures)
 
 
     def get_aux_input_from_test_sentences(self, sentence_info):
@@ -2474,6 +2623,12 @@ class ModularVits(BaseTTS):
             )
             return [optimizer0, optimizer1]
 
+        elif self.training_phase==5:
+            print("Using regular VITS Generator Parameters")
+            # select generator parameters
+            optimizer0 = get_optimizer(self.config.optimizer, self.config.optimizer_params, self.config.lr_disc, self.disc)
+            return [optimizer0]
+
 
         raise RuntimeError(
             " [!] No optimizer associated with training phase {}".format(self.training_phase)
@@ -2494,6 +2649,8 @@ class ModularVits(BaseTTS):
         elif self.training_phase==3 or self.training_phase==4:
             return [self.config.lr_disc, self.config.lr_gen]
          
+        elif self.training_phase==5:
+            return [self.config.lr_gen]
 
         raise RuntimeError(
             " [!] No learning rate associated with training phase {}".format(self.training_phase)
@@ -2521,6 +2678,10 @@ class ModularVits(BaseTTS):
             scheduler_G = get_scheduler(self.config.lr_scheduler_gen, self.config.lr_scheduler_gen_params, optimizer[0])
             scheduler_D = get_scheduler(self.config.lr_scheduler_disc, self.config.lr_scheduler_disc_params, optimizer[1])
             return[scheduler_D,scheduler_G]
+            
+        elif self.training_phase==5:
+            scheduler_G = get_scheduler(self.config.lr_scheduler_gen, self.config.lr_scheduler_gen_params, optimizer[0])
+            return[scheduler_G]
 
         raise RuntimeError(
             " [!] No scheduler(s) associated with training phase {}".format(self.training_phase)
@@ -2556,6 +2717,12 @@ class ModularVits(BaseTTS):
             print("launching VitsDiscriminatorLoss and VitsReducedGeneratorLoss as criterion")
             return [VitsDiscriminatorLoss(self.config), VitsReducedGeneratorLoss(self.config)]  
 
+        elif self.training_phase==5:        
+            from TTS.tts.layers.losses import (  # pylint: disable=import-outside-toplevel
+                VitsDuralLoss,
+            )
+            print("launching VitsDuralLoss as criterion")
+            return [VitsDuralLoss(self.config)]   
 
         else:
             print("No criterion to launch yet")

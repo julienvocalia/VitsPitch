@@ -1222,3 +1222,68 @@ class PitchPredictorLoss(nn.Module):
 
         return_dict["loss"] = loss
         return return_dict
+        
+        
+#ADDITION FOR ModularVits
+class VitsDuralLoss(nn.Module):
+    def __init__(self, c: Coqpit):
+        super().__init__()
+        self.kl_loss_alpha = c.kl_loss_alpha
+        self.dur_loss_alpha = c.dur_loss_alpha
+        self.spk_encoder_loss_alpha = c.speaker_encoder_loss_alpha
+        
+    @staticmethod
+    def kl_loss(z_p, logs_q, m_p, logs_p, z_mask):
+        """
+        z_p, logs_q: [b, h, t_t]
+        m_p, logs_p: [b, h, t_t]
+        """
+        z_p = z_p.float()
+        logs_q = logs_q.float()
+        m_p = m_p.float()
+        logs_p = logs_p.float()
+        z_mask = z_mask.float()
+
+        kl = logs_p - logs_q - 0.5
+        kl += 0.5 * ((z_p - m_p) ** 2) * torch.exp(-2.0 * logs_p)
+        kl = torch.sum(kl * z_mask)
+        l = kl / torch.sum(z_mask)
+        return l
+
+    @staticmethod
+    def cosine_similarity_loss(gt_spk_emb, syn_spk_emb):
+        return -torch.nn.functional.cosine_similarity(gt_spk_emb, syn_spk_emb).mean()
+
+    def forward(
+        self,
+        z_p,
+        logs_q,
+        m_p,
+        logs_p,
+        z_len,
+        loss_duration,
+        use_speaker_encoder_as_loss=False,
+        gt_spk_emb=None,
+        syn_spk_emb=None,
+    ):
+        loss = 0.0
+        return_dict = {}
+        z_mask = sequence_mask(z_len).float()
+        # compute losses
+        loss_kl = (
+            self.kl_loss(z_p=z_p, logs_q=logs_q, m_p=m_p, logs_p=logs_p, z_mask=z_mask.unsqueeze(1))
+            * self.kl_loss_alpha
+        )
+
+        loss_duration = torch.sum(loss_duration.float()) * self.dur_loss_alpha
+        loss = loss_kl + loss_duration
+
+        if use_speaker_encoder_as_loss:
+            loss_se = self.cosine_similarity_loss(gt_spk_emb, syn_spk_emb) * self.spk_encoder_loss_alpha
+            loss = loss + loss_se
+            return_dict["loss_spk_encoder"] = loss_se
+        # pass losses to the dict
+        return_dict["loss_kl"] = loss_kl
+        return_dict["loss_duration"] = loss_duration
+        return_dict["loss"] = loss
+        return return_dict
