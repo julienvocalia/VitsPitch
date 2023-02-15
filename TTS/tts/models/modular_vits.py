@@ -2138,8 +2138,9 @@ class ModularVits(BaseTTS):
             print("nothing to plot in phase 1....yet")
         
         elif self.training_phase==2:
-            figures = self._log(self.ap, batch, outputs, "train")
-            logger.train_figures(steps, figures)
+            print("nothing to plot in phase 2....yet")
+            #figures = self._log(self.ap, batch, outputs, "train")
+            #logger.train_figures(steps, figures)
         
         elif self.training_phase==3 or self.training_phase==4:
             figures, audios = self._log(self.ap, batch, outputs, "train")
