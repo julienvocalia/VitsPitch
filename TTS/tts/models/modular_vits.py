@@ -2279,7 +2279,7 @@ class ModularVits(BaseTTS):
             #figures = self._log(self.ap, batch, outputs, "train")
             #logger.train_figures(steps, figures)
         
-        elif self.training_phase==3 or self.training_phase==4 or self.training_phase==5:
+        elif self.training_phase==3 or self.training_phase==4:
             figures, audios = self._log(self.ap, batch, outputs, "train")
             logger.train_figures(steps, figures)
             logger.train_audios(steps, audios, self.ap.sample_rate)
