@@ -2188,15 +2188,15 @@ class ModularVits(BaseTTS):
             # compute losses
             with autocast(enabled=False):  # use float32 for the criterion
                 loss_dict = criterion[optimizer_idx](
-                    z_p=self.outputs["z_p"].float(),
-                    logs_q=self.outputs["logs_q"].float(),
-                    m_p=self.outputs["m_p"].float(),
-                    logs_p=self.outputs["logs_p"].float(),
+                    z_p=outputs["z_p"].float(),
+                    logs_q=outputs["logs_q"].float(),
+                    m_p=outputs["m_p"].float(),
+                    logs_p=outputs["logs_p"].float(),
                     z_len=spec_lens,
-                    loss_duration=self.outputs["loss_duration"],
+                    loss_duration=outputs["loss_duration"],
                     use_speaker_encoder_as_loss=self.args.use_speaker_encoder_as_loss,
-                    gt_spk_emb=self.outputs["gt_spk_emb"],
-                    syn_spk_emb=self.outputs["syn_spk_emb"],
+                    gt_spk_emb=outputs["gt_spk_emb"],
+                    syn_spk_emb=outputs["syn_spk_emb"],
                 )
 
             return outputs, loss_dict
