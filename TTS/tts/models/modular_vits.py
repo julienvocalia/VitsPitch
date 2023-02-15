@@ -2245,7 +2245,7 @@ class ModularVits(BaseTTS):
             
         elif self.training_phase==5:
 
-            alignments = outputs[1]["alignments"]
+            alignments = outputs[0]["alignments"]
             align_img = alignments[0].data.cpu().numpy().T
 
             figures.update(
