@@ -2600,11 +2600,13 @@ class ModularVits(BaseTTS):
         """
         if self.training_phase==1:
             print("Using the same optimizer as FastPitch")
-            optimizer_pitch_aligner = get_optimizer(self.config.optimizer_pitch, self.config.optimizer_pitch_params, self.config.lr_pitch_aligner, self.pitch_aligner)
+            pitch_align_encod_params=chain(self.pitch_aligner.parameters(), self.pitch_text_encoder.parameters())
+            optimizer_pitch_aligner = get_optimizer(self.config.optimizer_pitch, self.config.optimizer_pitch_params, self.config.lr_pitch_aligner, pitch_align_encod_params)
             return [optimizer_pitch_aligner]
             
         elif self.training_phase==2:
             print("Using the same optimizer as FastPitch")
+            pitch_align_encod_params=chain(self.pitch_predictor.parameters(), self.pitch_text_encoder.parameters())
             optimizer_pitch_predictor=get_optimizer(self.config.optimizer_pitch, self.config.optimizer_pitch_params, self.config.lr_pitch_predictor, self.pitch_predictor)
             return [optimizer_pitch_predictor]
             
