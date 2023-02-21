@@ -2272,10 +2272,10 @@ class ModularVits(BaseTTS):
             Tuple[Dict, np.ndarray]: training plots and output waveform.
         """
         if self.training_phase==1:
-            print("nothing to plot in phase 1....yet")
+            print("nothing to plot in phase 1....yet!")
         
         elif self.training_phase==2:
-            print("nothing to plot in phase 2....yet")
+            print("nothing to plot in phase 2....yet!")
             #figures = self._log(self.ap, batch, outputs, "train")
             #logger.train_figures(steps, figures)
         
