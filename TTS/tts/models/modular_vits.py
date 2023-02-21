@@ -2299,7 +2299,7 @@ class ModularVits(BaseTTS):
             print("No figures or audio to log in phase 1")
             
         elif self.training_phase==2:
-            print("No figures or audio to log in phase 1")
+            print("No figures or audio to log in phase 2")
             
         elif self.training_phase==3 or self.training_phase==4:
             figures, audios = self._log(self.ap, batch, outputs, "eval")
