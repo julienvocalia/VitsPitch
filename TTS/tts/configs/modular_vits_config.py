@@ -147,10 +147,10 @@ class ModularVitsConfig(BaseTTSConfig):
     optimizer_params: dict = field(default_factory=lambda: {"betas": [0.8, 0.99], "eps": 1e-9, "weight_decay": 0.01})
     
     #optimizer for Fast Pitch modules
-    #optimizer_pitch: str = "Adam"
-    #optimizer_pitch_params: dict = field(default_factory=lambda: {"betas": [0.9, 0.998], "weight_decay": 1e-6})    
-    optimizer_pitch: str = "AdamW"
-    optimizer_pitch_params: dict = field(default_factory=lambda: {"betas": [0.8, 0.99], "eps": 1e-9, "weight_decay": 0.01})   
+    optimizer_pitch_predictor: str = "Adam"
+    optimizer_pitch_predictor_params: dict = field(default_factory=lambda: {"betas": [0.9, 0.998], "weight_decay": 1e-6})    
+    optimizer_pitch_aligner: str = "AdamW"
+    optimizer_pitch_aligner_params: dict = field(default_factory=lambda: {"betas": [0.8, 0.99], "eps": 1e-9, "weight_decay": 0.01})   
     
     
     
@@ -162,24 +162,15 @@ class ModularVitsConfig(BaseTTSConfig):
     lr_scheduler_disc: str = "ExponentialLR"
     lr_scheduler_disc_params: dict = field(default_factory=lambda: {"gamma": 0.999875, "last_epoch": -1})
     
-    #as per  fast_pitch_config
-    #lr_pitch_aligner: float = 1e-4 #phase 1
-    #lr_scheduler_pitch_aligner: str = "NoamLR"
-    #lr_scheduler_pitch_aligner_params: dict = field(default_factory=lambda: {"warmup_steps": 4000})
     #switching back to vits config
     lr_pitch_aligner: float = 0.0002
     lr_scheduler_pitch_aligner: str = "ExponentialLR"
     lr_scheduler_pitch_aligner_params: dict = field(default_factory=lambda: {"gamma": 0.999875, "last_epoch": -1})
     
     #as per fast_pitch_config
-    #lr_pitch_predictor: float = 1e-4 #phase 3
-    #lr_scheduler_pitch_predictor: str = "NoamLR"
-    #lr_scheduler_pitch_predictor_params: dict = field(default_factory=lambda: {"warmup_steps": 4000})
-    #switching back to vits config
-    lr_pitch_predictor: float = 0.0002
-    lr_scheduler_pitch_predictor: str = "ExponentialLR"
-    lr_scheduler_pitch_predictor_params: dict = field(default_factory=lambda: {"gamma": 0.999875, "last_epoch": -1})
-
+    lr_pitch_predictor: float = 1e-3 #10 times the Lr of original FAstPitch implementation
+    lr_scheduler_pitch_predictor: str = "NoamLR"
+    lr_scheduler_pitch_predictor_params: dict = field(default_factory=lambda: {"warmup_steps": 4000})
 
     # loss params
     kl_loss_alpha: float = 1.0
