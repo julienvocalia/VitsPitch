@@ -2609,8 +2609,24 @@ class ModularVits(BaseTTS):
             pitch_pred_encod_params=chain(self.pitch_predictor.parameters(), self.pitch_text_encoder.parameters())
             optimizer_pitch_predictor=get_optimizer(self.config.optimizer_pitch_predictor, self.config.optimizer_pitch_predictor_params, self.config.lr_pitch_predictor, parameters = pitch_pred_encod_params)
             return [optimizer_pitch_predictor]
-            
-        elif self.training_phase==3 or self.training_phase==4:
+
+
+        elif self.training_phase==3:
+            print("Using regular VITS optimizers")
+            # discriminator optimizer
+            optimizer0 = get_optimizer(self.config.optimizer, self.config.optimizer_params, self.config.lr_disc, self.disc)
+
+            #generator parameters
+            #gen_parameters = chain(params for k, params in self.named_parameters() if not k.startswith("disc."))
+            gen_parameters=chain(self.waveform_decoder,self.posterior_encoder,self.flow,self.duration_predictor,self.text_encoder,self.pitch_conv1d)
+            optimizer1 = get_optimizer(
+                self.config.optimizer, self.config.optimizer_params, self.config.lr_gen, parameters=gen_parameters
+            )
+            return [optimizer0, optimizer1]
+
+
+
+        elif self.training_phase==4:
             print("Using regular VITS optimizers")
             # select generator parameters
             optimizer0 = get_optimizer(self.config.optimizer, self.config.optimizer_params, self.config.lr_disc, self.disc)
