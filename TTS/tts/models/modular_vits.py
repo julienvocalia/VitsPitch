@@ -2618,7 +2618,13 @@ class ModularVits(BaseTTS):
 
             #generator parameters
             #gen_parameters = chain(params for k, params in self.named_parameters() if not k.startswith("disc."))
-            gen_parameters=chain(self.waveform_decoder,self.posterior_encoder,self.flow,self.duration_predictor,self.text_encoder,self.pitch_conv1d)
+            gen_parameters=chain(
+                self.waveform_decoder.parameters(),
+                self.posterior_encoder.parameters(),
+                self.flow,self.duration_predictor.parameters(),
+                self.text_encoder.parameters(),
+                self.pitch_conv1d.parameters()
+                )
             optimizer1 = get_optimizer(
                 self.config.optimizer, self.config.optimizer_params, self.config.lr_gen, parameters=gen_parameters
             )
