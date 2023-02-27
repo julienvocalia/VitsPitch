@@ -2621,7 +2621,8 @@ class ModularVits(BaseTTS):
             gen_parameters=chain(
                 self.waveform_decoder.parameters(),
                 self.posterior_encoder.parameters(),
-                self.flow,self.duration_predictor.parameters(),
+                self.flow.parameters(),
+                self.duration_predictor.parameters(),
                 self.text_encoder.parameters(),
                 self.pitch_conv1d.parameters()
                 )
@@ -2637,7 +2638,15 @@ class ModularVits(BaseTTS):
             # select generator parameters
             optimizer0 = get_optimizer(self.config.optimizer, self.config.optimizer_params, self.config.lr_disc, self.disc)
 
-            gen_parameters = chain(params for k, params in self.named_parameters() if not k.startswith("disc."))
+            #gen_parameters = chain(params for k, params in self.named_parameters() if not k.startswith("disc."))
+            gen_parameters=chain(
+                self.waveform_decoder.parameters(),
+                #self.posterior_encoder.parameters(),
+                self.flow.parameters(),
+                #self.duration_predictor.parameters(),
+                self.text_encoder.parameters(),
+                #self.pitch_conv1d.parameters()
+                )
             optimizer1 = get_optimizer(
                 self.config.optimizer, self.config.optimizer_params, self.config.lr_gen, parameters=gen_parameters
             )
@@ -2645,10 +2654,9 @@ class ModularVits(BaseTTS):
 
         elif self.training_phase==5:
             print("Using regular VITS Generator Parameters")
-            # select generator parameters
-            gen_parameters = chain(params for k, params in self.named_parameters() if not k.startswith("disc."))
+            # select generator parameters useful for this phase
             optimizer_dural = get_optimizer(
-                self.config.optimizer, self.config.optimizer_params, self.config.lr_gen, parameters=gen_parameters
+                self.config.optimizer, self.config.optimizer_params, self.config.lr_gen, self.duration_predictor
             )
             return [optimizer_dural]
 
