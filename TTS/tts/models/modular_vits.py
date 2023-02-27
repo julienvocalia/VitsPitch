@@ -1637,14 +1637,14 @@ class ModularVits(BaseTTS):
         z = self.flow(z_p, y_mask, g=g, reverse=True)
 
         # upsampling if needed
-        z_up, _, _, y_mask = self.upsampling_z(z, y_lengths=y_lengths, y_mask=y_mask)
+        #z_up, _, _, y_mask = self.upsampling_z(z, y_lengths=y_lengths, y_mask=y_mask)
        
         #SLICES FOR WAVEFORM SEGMENTS
         # select a random feature segment for the waveform decoder
         z_slice, slice_ids = rand_segments(z, y_lengths, self.spec_segment_size, let_short_samples=True, pad_short=True)
 
         # interpolate z if needed
-        z_slice, spec_segment_size, slice_ids, _ = self.upsampling_z(z_slice, slice_ids=slice_ids)
+        z_slice, spec_segment_size, slice_ids, y_mask = self.upsampling_z(z_slice, slice_ids=slice_ids, y_lengths=y_lengths, y_mask=y_mask)
         
         #WAVEFORM DECODER
         o = self.waveform_decoder(z_slice, g=g)
