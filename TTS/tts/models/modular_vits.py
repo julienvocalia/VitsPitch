@@ -819,7 +819,21 @@ class ModularVits(BaseTTS):
             self.freeze_disc=True
             #we also freeze emb_g, to be adapted for each phase in later implementation
             self.freeze_emb_g=True
-
+            
+        elif self.training_phase==6:
+            self.freeze_pitch_predictor=True
+            self.freeze_pitch_embedding=True
+            self.freeze_pitch_encoding=True
+            self.freeze_pitch_conv1d=True
+            self.freeze_pitch_aligner=True
+            self.freeze_prior_encoder=True
+            self.freeze_post_encoder=True
+            self.freeze_SDP=True
+            self.freeze_flow_decoder=True
+            self.freeze_waveform_decoder=False
+            self.freeze_disc=False
+            #we also freeze emb_g, to be adapted for each phase in later implementation
+            self.freeze_emb_g=True
 
         self.text_encoder = TextEncoder(
             self.args.num_chars,
@@ -1352,6 +1366,14 @@ class ModularVits(BaseTTS):
                     aux_input=kwargs.get('aux_input')
             )        
 
+        elif training_phase==6:
+            return self.forward_phase_6(
+                    y = kwargs.get('y'),
+                    y_lengths= kwargs.get('y_lengths'),
+                    waveform = kwargs.get('waveform'),
+                    aux_input=kwargs.get('aux_input')
+            )     
+
         
         raise ValueError(" [!] Unexpected training_phase {} in forward function.".format(training_phase))
         
@@ -1763,6 +1785,70 @@ class ModularVits(BaseTTS):
         return outputs
 
 
+
+    #Modular_vits forward pass for the phase 6
+    def forward_phase_6(  # pylint: disable=dangerous-default-value
+        self,
+        y: torch.tensor,
+        y_lengths: torch.tensor,
+        waveform: torch.tensor,
+        aux_input={"d_vectors": None, "speaker_ids": None, "language_ids": None},
+    ) -> Dict:
+        outputs = {}
+        sid, g, lid, _ = self._set_cond_input(aux_input)
+        # speaker embedding
+        if self.args.use_speaker_embedding and sid is not None:
+            g = self.emb_g(sid).unsqueeze(-1)  # [b, h, 1]
+
+        # language embedding
+        lang_emb = None
+        if self.args.use_language_embedding and lid is not None:
+            lang_emb = self.emb_l(lid).unsqueeze(-1)
+            
+        # posterior encoder
+        z, _, _, _ = self.posterior_encoder(y, y_lengths, g=g)
+
+        # select a random feature segment for the waveform decoder
+        z_slice, slice_ids = rand_segments(z, y_lengths, self.spec_segment_size, let_short_samples=True, pad_short=True)
+
+        # interpolate z if needed
+        z_slice, spec_segment_size, slice_ids, _ = self.upsampling_z(z_slice, slice_ids=slice_ids)
+
+        o = self.waveform_decoder(z_slice, g=g)
+
+        wav_seg = segment(
+            waveform,
+            slice_ids * self.config.audio.hop_length,
+            spec_segment_size * self.config.audio.hop_length,
+            pad_short=True,
+        )
+
+        if self.args.use_speaker_encoder_as_loss and self.speaker_manager.encoder is not None:
+            # concate generated and GT waveforms
+            wavs_batch = torch.cat((wav_seg, o), dim=0)
+
+            # resample audio to speaker encoder sample_rate
+            # pylint: disable=W0105
+            if self.audio_transform is not None:
+                wavs_batch = self.audio_transform(wavs_batch)
+
+            pred_embs = self.speaker_manager.encoder.forward(wavs_batch, l2_norm=True)
+
+            # split generated and GT speaker embeddings
+            gt_spk_emb, syn_spk_emb = torch.chunk(pred_embs, 2, dim=0)
+        else:
+            gt_spk_emb, syn_spk_emb = None, None
+
+        outputs.update(
+            {
+                "model_outputs": o,
+                "waveform_seg": wav_seg,
+                "gt_spk_emb": gt_spk_emb,
+                "syn_spk_emb": syn_spk_emb,
+                "slice_ids": slice_ids,
+            }
+        )
+        return outputs
 
     @staticmethod
     def _set_x_lengths(x, aux_input):
@@ -2208,6 +2294,86 @@ class ModularVits(BaseTTS):
 
             return outputs, loss_dict
  
+       #PHASE 6 : Just the discriminator  and waveform decoder
+        elif self.training_phase ==6:
+            #loading batch
+            spec_lens = batch["spec_lens"]
+
+            if optimizer_idx == 0:
+                spec = batch["spec"]
+                waveform = batch["waveform"]
+                
+                # generator pass
+                outputs = self.forward(
+                    training_phase=self.training_phase,
+                    y = spec,
+                    y_lengths= spec_lens,
+                    waveform = waveform,
+                    aux_input={"d_vectors": d_vectors, "speaker_ids": speaker_ids, "language_ids": language_ids},
+                )
+
+                # cache tensors for the generator pass
+                self.model_outputs_cache = outputs  # pylint: disable=attribute-defined-outside-init
+
+                # compute scores and features
+                scores_disc_fake, _, scores_disc_real, _ = self.disc(
+                    outputs["model_outputs"].detach(), outputs["waveform_seg"]
+                )
+
+                # compute loss
+                with autocast(enabled=False):  # use float32 for the criterion
+                    loss_dict = criterion[optimizer_idx](
+                        scores_disc_real,
+                        scores_disc_fake,
+                    )
+                return outputs, loss_dict
+            if optimizer_idx == 1:
+                #loading batch
+                mel = batch["mel"]
+
+                # compute melspec segment
+                with autocast(enabled=False):
+
+                    if self.args.encoder_sample_rate:
+                        spec_segment_size = self.spec_segment_size * int(self.interpolate_factor)
+                    else:
+                        spec_segment_size = self.spec_segment_size
+
+                    mel_slice = segment(
+                        mel.float(), self.model_outputs_cache["slice_ids"], spec_segment_size, pad_short=True
+                    )
+                    mel_slice_hat = wav_to_mel(
+                        y=self.model_outputs_cache["model_outputs"].float(),
+                        n_fft=self.config.audio.fft_size,
+                        sample_rate=self.config.audio.sample_rate,
+                        num_mels=self.config.audio.num_mels,
+                        hop_length=self.config.audio.hop_length,
+                        win_length=self.config.audio.win_length,
+                        fmin=self.config.audio.mel_fmin,
+                        fmax=self.config.audio.mel_fmax,
+                        center=False,
+                    )
+
+                # compute discriminator scores and features
+                scores_disc_fake, feats_disc_fake, _, feats_disc_real = self.disc(
+                    self.model_outputs_cache["model_outputs"], self.model_outputs_cache["waveform_seg"]
+                )
+
+                # compute losses
+                with autocast(enabled=False):  # use float32 for the criterion
+                    loss_dict = criterion[optimizer_idx](
+                        mel_slice=mel_slice.float(),
+                        mel_slice_hat=mel_slice_hat.float(),
+                        scores_disc_fake=scores_disc_fake,
+                        feats_disc_fake=feats_disc_fake,
+                        feats_disc_real=feats_disc_real,
+                        use_speaker_encoder_as_loss=self.args.use_speaker_encoder_as_loss,
+                        gt_spk_emb=self.model_outputs_cache["gt_spk_emb"],
+                        syn_spk_emb=self.model_outputs_cache["syn_spk_emb"],
+                    )
+
+                return self.model_outputs_cache, loss_dict
+            
         raise ValueError(" [!] Unexpected `optimizer_idx`.")
 
 
@@ -2257,7 +2423,15 @@ class ModularVits(BaseTTS):
 
             figures={"alignment": plot_alignment(align_img, output_fig=False),}
             return figures        
+        
+        elif self.training_phase==6:
+            y_hat = outputs[1]["model_outputs"]
+            y = outputs[1]["waveform_seg"]
+            figures = plot_results(y_hat, y, ap, name_prefix)
+            sample_voice = y_hat[0].squeeze(0).detach().cpu().numpy()
+            audios = {f"{name_prefix}/audio": sample_voice}
 
+            return figures, audios
 
         
         raise ValueError(" [!] No logs associated with current trainig phase {}.".format(str(self.training_phase)))
@@ -2286,7 +2460,7 @@ class ModularVits(BaseTTS):
             #figures = self._log(self.ap, batch, outputs, "train")
             #logger.train_figures(steps, figures)
         
-        elif self.training_phase==3 or self.training_phase==4:
+        elif self.training_phase==3 or self.training_phase==4 or self.training_phase==6:
             figures, audios = self._log(self.ap, batch, outputs, "train")
             logger.train_figures(steps, figures)
             logger.train_audios(steps, audios, self.ap.sample_rate)
@@ -2308,7 +2482,7 @@ class ModularVits(BaseTTS):
         elif self.training_phase==2:
             print("No figures or audio to log in phase 2")
             
-        elif self.training_phase==3 or self.training_phase==4:
+        elif self.training_phase==3 or self.training_phase==4 or self.training_phase==6:
             figures, audios = self._log(self.ap, batch, outputs, "eval")
             logger.eval_figures(steps, figures)
             logger.eval_audios(steps, audios, self.ap.sample_rate)
@@ -2668,6 +2842,17 @@ class ModularVits(BaseTTS):
             return [optimizer_dural]
 
 
+        elif self.training_phase==6:
+            print("Using regular VITS optimizers only for discriminator and waveform decoder")
+            # discriminator optimizer
+            optimizer0 = get_optimizer(self.config.optimizer, self.config.optimizer_params, self.config.lr_disc, self.disc)
+
+            #generator optimizer
+            optimizer1 = get_optimizer(
+                self.config.optimizer, self.config.optimizer_params, self.config.lr_gen, self.waveform_decoder
+            )
+            return [optimizer0, optimizer1]
+
         raise RuntimeError(
             " [!] No optimizer associated with training phase {}".format(self.training_phase)
         )
@@ -2684,7 +2869,7 @@ class ModularVits(BaseTTS):
         elif self.training_phase==2:
             return [self.config.lr_pitch_predictor]
         
-        elif self.training_phase==3 or self.training_phase==4:
+        elif self.training_phase==3 or self.training_phase==4 or self.training_phase==6:
             return [self.config.lr_disc, self.config.lr_gen]
          
         elif self.training_phase==5:
@@ -2712,7 +2897,7 @@ class ModularVits(BaseTTS):
             scheduler_pitch_predictor=get_scheduler(self.config.lr_scheduler_pitch_predictor, self.config.lr_scheduler_pitch_predictor_params, optimizer[0])
             return  [scheduler_pitch_predictor]
  
-        elif self.training_phase==3 or self.training_phase==4:
+        elif self.training_phase==3 or self.training_phase==4 or self.training_phase==6:
             scheduler_G = get_scheduler(self.config.lr_scheduler_gen, self.config.lr_scheduler_gen_params, optimizer[0])
             scheduler_D = get_scheduler(self.config.lr_scheduler_disc, self.config.lr_scheduler_disc_params, optimizer[1])
             return[scheduler_D,scheduler_G]
@@ -2761,7 +2946,15 @@ class ModularVits(BaseTTS):
             )
             print("launching VitsDuralLoss as criterion")
             return [VitsDuralLoss(self.config)]   
-
+        
+        elif self.training_phase==6:        
+            from TTS.tts.layers.losses import (  # pylint: disable=import-outside-toplevel
+                VitsDiscriminatorLoss,
+                VitsWaveformDecoderLoss,
+            )
+            print("launching VitsDiscriminatorLoss and VitsWaveformDecoderLoss as criterion")
+            return [VitsDiscriminatorLoss(self.config), VitsWaveformDecoderLoss(self.config)]   
+        
         else:
             print("No criterion to launch yet")
             return []

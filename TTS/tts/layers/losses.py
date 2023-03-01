@@ -1287,3 +1287,90 @@ class VitsDuralLoss(nn.Module):
         return_dict["loss_duration"] = loss_duration
         return_dict["loss"] = loss
         return return_dict
+
+#Based on Vits Generator Loss but only for the waveform decoder
+class VitsWaveformDecoderLoss(nn.Module):
+    def __init__(self, c: Coqpit):
+        super().__init__()
+        self.gen_loss_alpha = c.gen_loss_alpha
+        self.feat_loss_alpha = c.feat_loss_alpha
+        self.mel_loss_alpha = c.mel_loss_alpha
+        self.spk_encoder_loss_alpha = c.speaker_encoder_loss_alpha
+        self.stft = TorchSTFT(
+            c.audio.fft_size,
+            c.audio.hop_length,
+            c.audio.win_length,
+            sample_rate=c.audio.sample_rate,
+            mel_fmin=c.audio.mel_fmin,
+            mel_fmax=c.audio.mel_fmax,
+            n_mels=c.audio.num_mels,
+            use_mel=True,
+            do_amp_to_db=True,
+        )
+
+    @staticmethod
+    def feature_loss(feats_real, feats_generated):
+        loss = 0
+        for dr, dg in zip(feats_real, feats_generated):
+            for rl, gl in zip(dr, dg):
+                rl = rl.float().detach()
+                gl = gl.float()
+                loss += torch.mean(torch.abs(rl - gl))
+        return loss * 2
+
+    @staticmethod
+    def generator_loss(scores_fake):
+        loss = 0
+        gen_losses = []
+        for dg in scores_fake:
+            dg = dg.float()
+            l = torch.mean((1 - dg) ** 2)
+            gen_losses.append(l)
+            loss += l
+
+        return loss, gen_losses
+
+
+    @staticmethod
+    def cosine_similarity_loss(gt_spk_emb, syn_spk_emb):
+        return -torch.nn.functional.cosine_similarity(gt_spk_emb, syn_spk_emb).mean()
+
+    def forward(
+        self,
+        mel_slice,
+        mel_slice_hat,
+        scores_disc_fake,
+        feats_disc_fake,
+        feats_disc_real,
+        use_speaker_encoder_as_loss=False,
+        gt_spk_emb=None,
+        syn_spk_emb=None,
+    ):
+        """
+        Shapes:
+            - mel_slice : :math:`[B, 1, T]`
+            - mel_slice_hat: :math:`[B, 1, T]`
+            - scores_disc_fake[i]: :math:`[B, C]`
+            - feats_disc_fake[i][j]: :math:`[B, C, T', P]`
+            - feats_disc_real[i][j]: :math:`[B, C, T', P]`
+        """
+        loss = 0.0
+        return_dict = {}
+
+        loss_feat = (
+            self.feature_loss(feats_real=feats_disc_real, feats_generated=feats_disc_fake) * self.feat_loss_alpha
+        )
+        loss_gen = self.generator_loss(scores_fake=scores_disc_fake)[0] * self.gen_loss_alpha
+        loss_mel = torch.nn.functional.l1_loss(mel_slice, mel_slice_hat) * self.mel_loss_alpha
+        loss = loss_feat + loss_mel + loss_gen
+
+        if use_speaker_encoder_as_loss:
+            loss_se = self.cosine_similarity_loss(gt_spk_emb, syn_spk_emb) * self.spk_encoder_loss_alpha
+            loss = loss + loss_se
+            return_dict["loss_spk_encoder"] = loss_se
+        # pass losses to the dict
+        return_dict["loss_gen"] = loss_gen
+        return_dict["loss_feat"] = loss_feat
+        return_dict["loss_mel"] = loss_mel
+        return_dict["loss"] = loss
+        return return_dict
