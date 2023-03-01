@@ -801,6 +801,8 @@ class ModularVits(BaseTTS):
             self.freeze_flow_decoder=False
             self.freeze_waveform_decoder=False
             self.freeze_disc=False
+            #we also freeze emb_g, to be adapted for each phase in later implementation
+            self.freeze_emb_g=True
             
             
         elif self.training_phase==5:
@@ -815,6 +817,8 @@ class ModularVits(BaseTTS):
             self.freeze_flow_decoder=True
             self.freeze_waveform_decoder=True
             self.freeze_disc=True
+            #we also freeze emb_g, to be adapted for each phase in later implementation
+            self.freeze_emb_g=True
 
 
         self.text_encoder = TextEncoder(
@@ -1108,6 +1112,12 @@ class ModularVits(BaseTTS):
         if self.freeze_disc:
             print("freezing discriminator")
             for param in self.disc.parameters():
+                param.requires_grad = False
+
+        #we also freeze emb_g, to be adapted for each phase in later implementation
+        if self.freeze_emb_g:
+            print("freezin emb_g")
+            for param in self.emb_g.parameters():
                 param.requires_grad = False
                 
     @staticmethod
