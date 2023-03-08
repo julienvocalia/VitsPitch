@@ -1130,7 +1130,7 @@ class ModularVits(BaseTTS):
 
         #we also freeze emb_g, to be adapted for each phase in later implementation
         if self.freeze_emb_g:
-            print("freezin emb_g")
+            print("freezing emb_g")
             for param in self.emb_g.parameters():
                 param.requires_grad = False
                 
