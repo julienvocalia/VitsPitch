@@ -2016,13 +2016,14 @@ class ModularVits(BaseTTS):
         o_hat = self.waveform_decoder(z_hat * y_mask, g=g_tgt)
         return o_hat, y_mask, (z, z_p, z_hat)
 
-    def train_step(self, batch: dict, criterion: nn.Module, optimizer_idx: int) -> Tuple[Dict, Dict]:
+    def train_step(self, batch: dict, criterion: nn.Module, optimizer_idx: int, evaluating: bool = False) -> Tuple[Dict, Dict]:
         """Perform a single training step. Run the model forward pass and compute losses.
 
         Args:
             batch (Dict): Input tensors.
             criterion (nn.Module): Loss layer designed for the model.
             optimizer_idx (int): Index of optimizer to use. 0 for the generator and 1 for the discriminator networks.
+            evaluatin (book): different training_step performed in case we are performing an evaluation for certain phasese
 
         Returns:
             Tuple[Dict, Dict]: Model ouputs and computed losses.
@@ -2089,7 +2090,18 @@ class ModularVits(BaseTTS):
             
             
         #PHASE 3 : CORE VITS
-        elif self.training_phase ==3:
+        #we also use this training_phase in case of evaluation for phases 5 and 6
+        elif self.training_phase ==3 or evaluating:
+            #we need to use different criterion if we are running an evaluatio
+            if evaluating:
+                from TTS.tts.layers.losses import (  # pylint: disable=import-outside-toplevel
+                VitsDiscriminatorLoss,
+                VitsGeneratorLoss,
+                )
+                eval_criterion_0=VitsDiscriminatorLoss(self.config)
+                eval_criterion_1=VitsGeneratorLoss(self.config)
+
+
             #loading batch
             spec_lens = batch["spec_lens"]
 
@@ -2099,7 +2111,7 @@ class ModularVits(BaseTTS):
                 
                 # generator pass
                 outputs = self.forward(
-                    training_phase=self.training_phase,
+                    training_phase=3,
                     x=tokens,
                     x_lengths=token_lengths,
                     y = spec,
@@ -2119,11 +2131,18 @@ class ModularVits(BaseTTS):
                 )
 
                 # compute loss
-                with autocast(enabled=False):  # use float32 for the criterion
-                    loss_dict = criterion[optimizer_idx](
-                        scores_disc_real,
-                        scores_disc_fake,
-                    )
+                if evaluating:
+                    with autocast(enabled=False):  # use float32 for the criterion
+                        loss_dict = eval_criterion_0(
+                            scores_disc_real,
+                            scores_disc_fake,
+                        )
+                else:
+                    with autocast(enabled=False):  # use float32 for the criterion
+                        loss_dict = criterion[optimizer_idx](
+                            scores_disc_real,
+                            scores_disc_fake,
+                        )
                 return outputs, loss_dict
             if optimizer_idx == 1:
                 #loading batch
@@ -2158,28 +2177,47 @@ class ModularVits(BaseTTS):
                 )
 
                 # compute losses
-                with autocast(enabled=False):  # use float32 for the criterion
-                    loss_dict = criterion[optimizer_idx](
-                        mel_slice=mel_slice.float(),
-                        mel_slice_hat=mel_slice_hat.float(),
-                        z_p=self.model_outputs_cache["z_p"].float(),
-                        logs_q=self.model_outputs_cache["logs_q"].float(),
-                        m_p=self.model_outputs_cache["m_p"].float(),
-                        logs_p=self.model_outputs_cache["logs_p"].float(),
-                        z_len=spec_lens,
-                        scores_disc_fake=scores_disc_fake,
-                        feats_disc_fake=feats_disc_fake,
-                        feats_disc_real=feats_disc_real,
-                        loss_duration=self.model_outputs_cache["loss_duration"],
-                        use_speaker_encoder_as_loss=self.args.use_speaker_encoder_as_loss,
-                        gt_spk_emb=self.model_outputs_cache["gt_spk_emb"],
-                        syn_spk_emb=self.model_outputs_cache["syn_spk_emb"],
-                    )
+                if evaluating:
+                    with autocast(enabled=False):  # use float32 for the criterion
+                        loss_dict = eval_criterion_1(
+                            mel_slice=mel_slice.float(),
+                            mel_slice_hat=mel_slice_hat.float(),
+                            z_p=self.model_outputs_cache["z_p"].float(),
+                            logs_q=self.model_outputs_cache["logs_q"].float(),
+                            m_p=self.model_outputs_cache["m_p"].float(),
+                            logs_p=self.model_outputs_cache["logs_p"].float(),
+                            z_len=spec_lens,
+                            scores_disc_fake=scores_disc_fake,
+                            feats_disc_fake=feats_disc_fake,
+                            feats_disc_real=feats_disc_real,
+                            loss_duration=self.model_outputs_cache["loss_duration"],
+                            use_speaker_encoder_as_loss=self.args.use_speaker_encoder_as_loss,
+                            gt_spk_emb=self.model_outputs_cache["gt_spk_emb"],
+                            syn_spk_emb=self.model_outputs_cache["syn_spk_emb"],
+                        )
+                else:
+                    with autocast(enabled=False):  # use float32 for the criterion
+                        loss_dict = criterion[optimizer_idx](
+                            mel_slice=mel_slice.float(),
+                            mel_slice_hat=mel_slice_hat.float(),
+                            z_p=self.model_outputs_cache["z_p"].float(),
+                            logs_q=self.model_outputs_cache["logs_q"].float(),
+                            m_p=self.model_outputs_cache["m_p"].float(),
+                            logs_p=self.model_outputs_cache["logs_p"].float(),
+                            z_len=spec_lens,
+                            scores_disc_fake=scores_disc_fake,
+                            feats_disc_fake=feats_disc_fake,
+                            feats_disc_real=feats_disc_real,
+                            loss_duration=self.model_outputs_cache["loss_duration"],
+                            use_speaker_encoder_as_loss=self.args.use_speaker_encoder_as_loss,
+                            gt_spk_emb=self.model_outputs_cache["gt_spk_emb"],
+                            syn_spk_emb=self.model_outputs_cache["syn_spk_emb"],
+                        )
 
                 return self.model_outputs_cache, loss_dict
         
         #PHASE 4 : CORE VITS
-        elif self.training_phase ==4:
+        elif self.training_phase ==4 and not(evaluating):
             #loading batch
             spec_lens = batch["spec_lens"]
 
@@ -2263,7 +2301,7 @@ class ModularVits(BaseTTS):
                 return self.model_outputs_cache, loss_dict
                 
         #PHASE  : VITS DURAL
-        elif self.training_phase ==5:
+        elif self.training_phase ==5 and not(evaluating):
             #loading batch
             spec_lens = batch["spec_lens"]
             spec = batch["spec"]
@@ -2295,7 +2333,7 @@ class ModularVits(BaseTTS):
             return outputs, loss_dict
  
        #PHASE 6 : Just the discriminator  and waveform decoder
-        elif self.training_phase ==6:
+        elif self.training_phase ==6 and not(evaluating):
             #loading batch
             spec_lens = batch["spec_lens"]
 
@@ -2473,7 +2511,8 @@ class ModularVits(BaseTTS):
 
     @torch.no_grad()
     def eval_step(self, batch: dict, criterion: nn.Module, optimizer_idx: int):
-        return self.train_step(batch, criterion, optimizer_idx)
+        #we added one arg : evaluating = True, so that we use a more complete training_step
+        return self.train_step(batch, criterion, optimizer_idx,evaluating=True)
 
     def eval_log(self, batch: dict, outputs: dict, logger: "Logger", assets: dict, steps: int) -> None:
         if self.training_phase==1:
