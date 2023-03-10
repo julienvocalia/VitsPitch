@@ -2143,8 +2143,11 @@ class ModularVits(BaseTTS):
                             scores_disc_real,
                             scores_disc_fake,
                         )
-                return outputs, loss_dict
-            if optimizer_idx == 1:
+                    #return only if not evaluating
+                    return outputs, loss_dict
+                
+            #we pursue the step if we are in eval mode
+            if optimizer_idx == 1 or evaluating:
                 #loading batch
                 mel = batch["mel"]
 
@@ -2178,23 +2181,28 @@ class ModularVits(BaseTTS):
 
                 # compute losses
                 if evaluating:
+                    #we may not have created loss_dict yet, so we need to initialize (for example for phase 6)
+                    if not('loss_dict' in locals()):
+                        loss_dict={}
                     with autocast(enabled=False):  # use float32 for the criterion
-                        loss_dict = eval_criterion_1(
-                            mel_slice=mel_slice.float(),
-                            mel_slice_hat=mel_slice_hat.float(),
-                            z_p=self.model_outputs_cache["z_p"].float(),
-                            logs_q=self.model_outputs_cache["logs_q"].float(),
-                            m_p=self.model_outputs_cache["m_p"].float(),
-                            logs_p=self.model_outputs_cache["logs_p"].float(),
-                            z_len=spec_lens,
-                            scores_disc_fake=scores_disc_fake,
-                            feats_disc_fake=feats_disc_fake,
-                            feats_disc_real=feats_disc_real,
-                            loss_duration=self.model_outputs_cache["loss_duration"],
-                            use_speaker_encoder_as_loss=self.args.use_speaker_encoder_as_loss,
-                            gt_spk_emb=self.model_outputs_cache["gt_spk_emb"],
-                            syn_spk_emb=self.model_outputs_cache["syn_spk_emb"],
-                        )
+                        loss_dict.update(
+                            eval_criterion_1(
+                                mel_slice=mel_slice.float(),
+                                mel_slice_hat=mel_slice_hat.float(),
+                                z_p=self.model_outputs_cache["z_p"].float(),
+                                logs_q=self.model_outputs_cache["logs_q"].float(),
+                                m_p=self.model_outputs_cache["m_p"].float(),
+                                logs_p=self.model_outputs_cache["logs_p"].float(),
+                                z_len=spec_lens,
+                                scores_disc_fake=scores_disc_fake,
+                                feats_disc_fake=feats_disc_fake,
+                                feats_disc_real=feats_disc_real,
+                                loss_duration=self.model_outputs_cache["loss_duration"],
+                                use_speaker_encoder_as_loss=self.args.use_speaker_encoder_as_loss,
+                                gt_spk_emb=self.model_outputs_cache["gt_spk_emb"],
+                                syn_spk_emb=self.model_outputs_cache["syn_spk_emb"],
+                                )
+                            )
                 else:
                     with autocast(enabled=False):  # use float32 for the criterion
                         loss_dict = criterion[optimizer_idx](
