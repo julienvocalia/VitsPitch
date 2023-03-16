@@ -814,7 +814,7 @@ class ModularVits(BaseTTS):
             self.freeze_prior_encoder=True
             self.freeze_post_encoder=True
             self.freeze_SDP=False
-            self.freeze_flow_decoder=True
+            self.freeze_flow_decoder=False
             self.freeze_waveform_decoder=True
             self.freeze_disc=True
             #we also freeze emb_g, to be adapted for each phase in later implementation
@@ -2883,8 +2883,13 @@ class ModularVits(BaseTTS):
         elif self.training_phase==5:
             print("Using regular VITS Generator Parameters")
             # select generator parameters useful for this phase
+            dur_parameters=chain(
+                self.duration_predictor.parameters(),
+                self.flow.parameters()
+            )
+            # select generator parameters useful for this phase
             optimizer_dural = get_optimizer(
-                self.config.optimizer, self.config.optimizer_params, self.config.lr_gen, self.duration_predictor
+                self.config.optimizer, self.config.optimizer_params, self.config.lr_gen, parameters=dur_parameters
             )
             return [optimizer_dural]
 
