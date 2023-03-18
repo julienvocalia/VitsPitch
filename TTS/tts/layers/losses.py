@@ -991,13 +991,13 @@ class VitsReducedGeneratorLoss(nn.Module):
         loss = loss_feat + loss_gen
         
         #we track a loss_mel similar to phase 3 only for display, but it will not be added to total loss
-        loss_mel_legacy = torch.nn.functional.l1_loss(mel_slice, mel_slice_hat) * self.mel_loss_alpha
+        #loss_mel_legacy = torch.nn.functional.l1_loss(mel_slice, mel_slice_hat) * self.mel_loss_alpha
         
         #we use a different alpha for the loss_mel actually used in the current phase
-        if self.mel_loss_alpha_gan!=0.0:
-            loss_mel_reduced=torch.nn.functional.l1_loss(mel_slice, mel_slice_hat) * self.mel_loss_alpha_gan
-            return_dict["loss_mel_reduced"]=loss_mel_reduced
-            loss=loss + loss_mel_reduced
+        #if self.mel_loss_alpha_gan!=0.0:
+        #    loss_mel_reduced=torch.nn.functional.l1_loss(mel_slice, mel_slice_hat) * self.mel_loss_alpha_gan
+        #    return_dict["loss_mel_reduced"]=loss_mel_reduced
+        #    loss=loss + loss_mel_reduced
 
         if use_speaker_encoder_as_loss:
             loss_se = self.cosine_similarity_loss(gt_spk_emb, syn_spk_emb) * self.spk_encoder_loss_alpha
@@ -1007,7 +1007,7 @@ class VitsReducedGeneratorLoss(nn.Module):
         # pass losses to the dict
         return_dict["loss_gen"] = loss_gen
         return_dict["loss_feat"] = loss_feat
-        return_dict["loss_mel"] = loss_mel_legacy
+        #return_dict["loss_mel"] = loss_mel_legacy
         return_dict["loss"] = loss
         return return_dict
 
