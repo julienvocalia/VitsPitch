@@ -788,6 +788,8 @@ class ModularVits(BaseTTS):
             self.freeze_flow_decoder=False
             self.freeze_waveform_decoder=False
             self.freeze_disc=False
+            #we also freeze emb_g, to be adapted for each phase in later implementation
+            self.freeze_emb_g=True
 
         elif self.training_phase==4:
             self.freeze_pitch_predictor=True
@@ -2023,7 +2025,7 @@ class ModularVits(BaseTTS):
             batch (Dict): Input tensors.
             criterion (nn.Module): Loss layer designed for the model.
             optimizer_idx (int): Index of optimizer to use. 0 for the generator and 1 for the discriminator networks.
-            evaluatin (book): different training_step performed in case we are performing an evaluation for certain phasese
+            evaluating (bool): different training_step performed in case we are performing an evaluation for certain phasese
 
         Returns:
             Tuple[Dict, Dict]: Model ouputs and computed losses.
@@ -2093,7 +2095,7 @@ class ModularVits(BaseTTS):
         #we also use this training_phase in case of evaluation for phases 5 and 6
         elif self.training_phase ==3 or evaluating:
             #we need to use different criterion if we are running an evaluatio
-            if evaluating:
+            if evaluating and not(self.training_phase ==3):
                 from TTS.tts.layers.losses import (  # pylint: disable=import-outside-toplevel
                 VitsDiscriminatorLoss,
                 VitsGeneratorLoss,
@@ -2131,7 +2133,7 @@ class ModularVits(BaseTTS):
                 )
 
                 # compute loss
-                if evaluating:
+                if evaluating and not(self.training_phase ==3):
                     with autocast(enabled=False):  # use float32 for the criterion
                         loss_dict = eval_criterion_0(
                             scores_disc_real,
@@ -2180,7 +2182,7 @@ class ModularVits(BaseTTS):
                 )
 
                 # compute losses
-                if evaluating:
+                if evaluating and not(self.training_phase ==3):
                     #we may not have created loss_dict yet, so we need to initialize (for example for phase 6)
                     if not('loss_dict' in locals()):
                         loss_dict={}
