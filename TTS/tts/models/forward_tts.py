@@ -15,112 +15,106 @@ from TTS.tts.models.base_tts import BaseTTS
 from TTS.tts.utils.helpers import average_over_durations, generate_path, maximum_path, sequence_mask
 from TTS.tts.utils.speakers import SpeakerManager
 from TTS.tts.utils.text.tokenizer import TTSTokenizer
-from TTS.tts.utils.visual import plot_alignment, plot_avg_pitch, plot_spectrogram
+from TTS.tts.utils.visual import plot_alignment, plot_avg_energy, plot_avg_pitch, plot_spectrogram
+from TTS.utils.io import load_fsspec
 
 
 @dataclass
 class ForwardTTSArgs(Coqpit):
     """ForwardTTS Model arguments.
-
     Args:
-
         num_chars (int):
             Number of characters in the vocabulary. Defaults to 100.
-
         out_channels (int):
             Number of output channels. Defaults to 80.
-
         hidden_channels (int):
             Number of base hidden channels of the model. Defaults to 512.
-
         use_aligner (bool):
             Whether to use aligner network to learn the text to speech alignment or use pre-computed durations.
             If set False, durations should be computed by `TTS/bin/compute_attention_masks.py` and path to the
             pre-computed durations must be provided to `config.datasets[0].meta_file_attn_mask`. Defaults to True.
-
         use_pitch (bool):
             Use pitch predictor to learn the pitch. Defaults to True.
-
+        use_energy (bool):
+            Use energy predictor to learn the energy. Defaults to True.
         duration_predictor_hidden_channels (int):
             Number of hidden channels in the duration predictor. Defaults to 256.
-
         duration_predictor_dropout_p (float):
             Dropout rate for the duration predictor. Defaults to 0.1.
-
         duration_predictor_kernel_size (int):
             Kernel size of conv layers in the duration predictor. Defaults to 3.
-
         pitch_predictor_hidden_channels (int):
             Number of hidden channels in the pitch predictor. Defaults to 256.
-
         pitch_predictor_dropout_p (float):
             Dropout rate for the pitch predictor. Defaults to 0.1.
-
         pitch_predictor_kernel_size (int):
             Kernel size of conv layers in the pitch predictor. Defaults to 3.
-
         pitch_embedding_kernel_size (int):
             Kernel size of the projection layer in the pitch predictor. Defaults to 3.
-
+        energy_predictor_hidden_channels (int):
+            Number of hidden channels in the energy predictor. Defaults to 256.
+        energy_predictor_dropout_p (float):
+            Dropout rate for the energy predictor. Defaults to 0.1.
+        energy_predictor_kernel_size (int):
+            Kernel size of conv layers in the energy predictor. Defaults to 3.
+        energy_embedding_kernel_size (int):
+            Kernel size of the projection layer in the energy predictor. Defaults to 3.
         positional_encoding (bool):
             Whether to use positional encoding. Defaults to True.
-
         positional_encoding_use_scale (bool):
             Whether to use a learnable scale coeff in the positional encoding. Defaults to True.
-
         length_scale (int):
             Length scale that multiplies the predicted durations. Larger values result slower speech. Defaults to 1.0.
-
         encoder_type (str):
             Type of the encoder module. One of the encoders available in :class:`TTS.tts.layers.feed_forward.encoder`.
             Defaults to `fftransformer` as in the paper.
-
         encoder_params (dict):
             Parameters of the encoder module. Defaults to ```{"hidden_channels_ffn": 1024, "num_heads": 1, "num_layers": 6, "dropout_p": 0.1}```
-
         decoder_type (str):
             Type of the decoder module. One of the decoders available in :class:`TTS.tts.layers.feed_forward.decoder`.
             Defaults to `fftransformer` as in the paper.
-
         decoder_params (str):
             Parameters of the decoder module. Defaults to ```{"hidden_channels_ffn": 1024, "num_heads": 1, "num_layers": 6, "dropout_p": 0.1}```
-
         detach_duration_predictor (bool):
             Detach the input to the duration predictor from the earlier computation graph so that the duraiton loss
             does not pass to the earlier layers. Defaults to True.
-
         max_duration (int):
             Maximum duration accepted by the model. Defaults to 75.
-
         num_speakers (int):
             Number of speakers for the speaker embedding layer. Defaults to 0.
-
         speakers_file (str):
             Path to the speaker mapping file for the Speaker Manager. Defaults to None.
-
         speaker_embedding_channels (int):
             Number of speaker embedding channels. Defaults to 256.
-
         use_d_vector_file (bool):
             Enable/Disable the use of d-vectors for multi-speaker training. Defaults to False.
-
         d_vector_dim (int):
             Number of d-vector channels. Defaults to 0.
-
     """
 
     num_chars: int = None
     out_channels: int = 80
     hidden_channels: int = 384
     use_aligner: bool = True
+    # pitch params
     use_pitch: bool = True
     pitch_predictor_hidden_channels: int = 256
     pitch_predictor_kernel_size: int = 3
     pitch_predictor_dropout_p: float = 0.1
     pitch_embedding_kernel_size: int = 3
+
+    # energy params
+    use_energy: bool = False
+    energy_predictor_hidden_channels: int = 256
+    energy_predictor_kernel_size: int = 3
+    energy_predictor_dropout_p: float = 0.1
+    energy_embedding_kernel_size: int = 3
+
+    # duration params
     duration_predictor_hidden_channels: int = 256
     duration_predictor_kernel_size: int = 3
     duration_predictor_dropout_p: float = 0.1
+
     positional_encoding: bool = True
     poisitonal_encoding_use_scale: bool = True
     length_scale: int = 1
@@ -145,25 +139,19 @@ class ForwardTTSArgs(Coqpit):
 class ForwardTTS(BaseTTS):
     """General forward TTS model implementation that uses an encoder-decoder architecture with an optional alignment
     network and a pitch predictor.
-
     If the alignment network is used, the model learns the text-to-speech alignment
     from the data instead of using pre-computed durations.
-
     If the pitch predictor is used, the model trains a pitch predictor that predicts average pitch value for each
     input character as in the FastPitch model.
-
     `ForwardTTS` can be configured to one of these architectures,
-
         - FastPitch
         - SpeedySpeech
         - FastSpeech
-        - TODO: FastSpeech2 (requires average speech energy predictor)
-
+        - FastSpeech2 (requires average speech energy predictor)
     Args:
         config (Coqpit): Model coqpit class.
         speaker_manager (SpeakerManager): Speaker manager for multi-speaker training. Only used for multi-speaker models.
             Defaults to None.
-
     Examples:
         >>> from TTS.tts.models.fast_pitch import ForwardTTS, ForwardTTSArgs
         >>> config = ForwardTTSArgs()
@@ -186,6 +174,7 @@ class ForwardTTS(BaseTTS):
         self.max_duration = self.args.max_duration
         self.use_aligner = self.args.use_aligner
         self.use_pitch = self.args.use_pitch
+        self.use_energy = self.args.use_energy
         self.binary_loss_weight = 0.0
 
         self.length_scale = (
@@ -233,6 +222,20 @@ class ForwardTTS(BaseTTS):
                 padding=int((self.args.pitch_embedding_kernel_size - 1) / 2),
             )
 
+        if self.args.use_energy:
+            self.energy_predictor = DurationPredictor(
+                self.args.hidden_channels + self.embedded_speaker_dim,
+                self.args.energy_predictor_hidden_channels,
+                self.args.energy_predictor_kernel_size,
+                self.args.energy_predictor_dropout_p,
+            )
+            self.energy_emb = nn.Conv1d(
+                1,
+                self.args.hidden_channels,
+                kernel_size=self.args.energy_embedding_kernel_size,
+                padding=int((self.args.energy_embedding_kernel_size - 1) / 2),
+            )
+
         if self.args.use_aligner:
             self.aligner = AlignmentNetwork(
                 in_query_channels=self.args.out_channels, in_key_channels=self.args.hidden_channels
@@ -240,7 +243,6 @@ class ForwardTTS(BaseTTS):
 
     def init_multispeaker(self, config: Coqpit):
         """Init for multi-speaker training.
-
         Args:
             config (Coqpit): Model configuration.
         """
@@ -267,7 +269,6 @@ class ForwardTTS(BaseTTS):
     @staticmethod
     def generate_attn(dr, x_mask, y_mask=None):
         """Generate an attention mask from the durations.
-
         Shapes
            - dr: :math:`(B, T_{en})`
            - x_mask: :math:`(B, T_{en})`
@@ -285,18 +286,14 @@ class ForwardTTS(BaseTTS):
     def expand_encoder_outputs(self, en, dr, x_mask, y_mask):
         """Generate attention alignment map from durations and
         expand encoder outputs
-
         Shapes:
             - en: :math:`(B, D_{en}, T_{en})`
             - dr: :math:`(B, T_{en})`
             - x_mask: :math:`(B, T_{en})`
             - y_mask: :math:`(B, T_{de})`
-
         Examples::
-
             encoder output: [a,b,c,d]
             durations: [1, 3, 2, 1]
-
             expanded: [a, b, b, b, c, c, d]
             attention map: [[0, 0, 0, 0, 0, 0, 1],
                             [0, 0, 0, 0, 1, 1, 0],
@@ -314,11 +311,9 @@ class ForwardTTS(BaseTTS):
         3. Apply masking.
         4. Cast 0 durations to 1.
         5. Round the duration values.
-
         Args:
             o_dr_log: Log scale durations.
             x_mask: Input text mask.
-
         Shapes:
             - o_dr_log: :math:`(B, T_{de})`
             - x_mask: :math:`(B, T_{en})`
@@ -332,22 +327,18 @@ class ForwardTTS(BaseTTS):
         self, x: torch.LongTensor, x_mask: torch.FloatTensor, g: torch.FloatTensor = None
     ) -> Tuple[torch.FloatTensor, torch.FloatTensor, torch.FloatTensor, torch.FloatTensor, torch.FloatTensor]:
         """Encoding forward pass.
-
         1. Embed speaker IDs if multi-speaker mode.
         2. Embed character sequences.
         3. Run the encoder network.
         4. Sum encoder outputs and speaker embeddings
-
         Args:
             x (torch.LongTensor): Input sequence IDs.
             x_mask (torch.FloatTensor): Input squence mask.
             g (torch.FloatTensor, optional): Conditioning vectors. In general speaker embeddings. Defaults to None.
-
         Returns:
             Tuple[torch.tensor, torch.tensor, torch.tensor, torch.tensor, torch.tensor]:
                 encoder output, encoder output for the duration predictor, input sequence mask, speaker embeddings,
                 character embeddings
-
         Shapes:
             - x: :math:`(B, T_{en})`
             - x_mask: :math:`(B, 1, T_{en})`
@@ -376,20 +367,17 @@ class ForwardTTS(BaseTTS):
         g: torch.FloatTensor,
     ) -> Tuple[torch.FloatTensor, torch.FloatTensor]:
         """Decoding forward pass.
-
         1. Compute the decoder output mask
         2. Expand encoder output with the durations.
         3. Apply position encoding.
         4. Add speaker embeddings if multi-speaker mode.
         5. Run the decoder.
-
         Args:
             o_en (torch.FloatTensor): Encoder output.
             dr (torch.IntTensor): Ground truth durations or alignment network durations.
             x_mask (torch.IntTensor): Input sequence mask.
             y_lengths (torch.IntTensor): Output sequence lengths.
             g (torch.FloatTensor): Conditioning vectors. In general speaker embeddings.
-
         Returns:
             Tuple[torch.FloatTensor, torch.FloatTensor]: Decoder output, attention map from durations.
         """
@@ -411,20 +399,16 @@ class ForwardTTS(BaseTTS):
         dr: torch.IntTensor = None,
     ) -> Tuple[torch.FloatTensor, torch.FloatTensor]:
         """Pitch predictor forward pass.
-
         1. Predict pitch from encoder outputs.
         2. In training - Compute average pitch values for each input character from the ground truth pitch values.
         3. Embed average pitch values.
-
         Args:
             o_en (torch.FloatTensor): Encoder output.
             x_mask (torch.IntTensor): Input sequence mask.
             pitch (torch.FloatTensor, optional): Ground truth pitch values. Defaults to None.
             dr (torch.IntTensor, optional): Ground truth durations. Defaults to None.
-
         Returns:
             Tuple[torch.FloatTensor, torch.FloatTensor]: Pitch embedding, pitch prediction.
-
         Shapes:
             - o_en: :math:`(B, C, T_{en})`
             - x_mask: :math:`(B, 1, T_{en})`
@@ -439,33 +423,60 @@ class ForwardTTS(BaseTTS):
         o_pitch_emb = self.pitch_emb(o_pitch)
         return o_pitch_emb, o_pitch
 
+    def _forward_energy_predictor(
+        self,
+        o_en: torch.FloatTensor,
+        x_mask: torch.IntTensor,
+        energy: torch.FloatTensor = None,
+        dr: torch.IntTensor = None,
+    ) -> Tuple[torch.FloatTensor, torch.FloatTensor]:
+        """Energy predictor forward pass.
+        1. Predict energy from encoder outputs.
+        2. In training - Compute average pitch values for each input character from the ground truth pitch values.
+        3. Embed average energy values.
+        Args:
+            o_en (torch.FloatTensor): Encoder output.
+            x_mask (torch.IntTensor): Input sequence mask.
+            energy (torch.FloatTensor, optional): Ground truth energy values. Defaults to None.
+            dr (torch.IntTensor, optional): Ground truth durations. Defaults to None.
+        Returns:
+            Tuple[torch.FloatTensor, torch.FloatTensor]: Energy embedding, energy prediction.
+        Shapes:
+            - o_en: :math:`(B, C, T_{en})`
+            - x_mask: :math:`(B, 1, T_{en})`
+            - pitch: :math:`(B, 1, T_{de})`
+            - dr: :math:`(B, T_{en})`
+        """
+        o_energy = self.energy_predictor(o_en, x_mask)
+        if energy is not None:
+            avg_energy = average_over_durations(energy, dr)
+            o_energy_emb = self.energy_emb(avg_energy)
+            return o_energy_emb, o_energy, avg_energy
+        o_energy_emb = self.energy_emb(o_energy)
+        return o_energy_emb, o_energy
+
     def _forward_aligner(
         self, x: torch.FloatTensor, y: torch.FloatTensor, x_mask: torch.IntTensor, y_mask: torch.IntTensor
     ) -> Tuple[torch.IntTensor, torch.FloatTensor, torch.FloatTensor, torch.FloatTensor]:
         """Aligner forward pass.
-
         1. Compute a mask to apply to the attention map.
         2. Run the alignment network.
         3. Apply MAS to compute the hard alignment map.
         4. Compute the durations from the hard alignment map.
-
         Args:
             x (torch.FloatTensor): Input sequence.
             y (torch.FloatTensor): Output sequence.
             x_mask (torch.IntTensor): Input sequence mask.
             y_mask (torch.IntTensor): Output sequence mask.
-
         Returns:
             Tuple[torch.IntTensor, torch.FloatTensor, torch.FloatTensor, torch.FloatTensor]:
                 Durations from the hard alignment map, soft alignment potentials, log scale alignment potentials,
                 hard alignment map.
-
         Shapes:
             - x: :math:`[B, T_en, C_en]`
             - y: :math:`[B, T_de, C_de]`
             - x_mask: :math:`[B, 1, T_en]`
             - y_mask: :math:`[B, 1, T_de]`
-
             - o_alignment_dur: :math:`[B, T_en]`
             - alignment_soft: :math:`[B, T_en, T_de]`
             - alignment_logprob: :math:`[B, 1, T_de, T_en]`
@@ -501,10 +512,10 @@ class ForwardTTS(BaseTTS):
         y: torch.FloatTensor = None,
         dr: torch.IntTensor = None,
         pitch: torch.FloatTensor = None,
+        energy: torch.FloatTensor = None,
         aux_input: Dict = {"d_vectors": None, "speaker_ids": None},  # pylint: disable=unused-argument
     ) -> Dict:
         """Model's forward pass.
-
         Args:
             x (torch.LongTensor): Input character sequences.
             x_lengths (torch.LongTensor): Input sequence lengths.
@@ -512,8 +523,8 @@ class ForwardTTS(BaseTTS):
             y (torch.FloatTensor): Spectrogram frames. Only used when the alignment network is on. Defaults to None.
             dr (torch.IntTensor): Character durations over the spectrogram frames. Only used when the alignment network is off. Defaults to None.
             pitch (torch.FloatTensor): Pitch values for each spectrogram frame. Only used when the pitch predictor is on. Defaults to None.
+            energy (torch.FloatTensor): energy values for each spectrogram frame. Only used when the energy predictor is on. Defaults to None.
             aux_input (Dict): Auxiliary model inputs for multi-speaker training. Defaults to `{"d_vectors": 0, "speaker_ids": None}`.
-
         Shapes:
             - x: :math:`[B, T_max]`
             - x_lengths: :math:`[B]`
@@ -555,6 +566,12 @@ class ForwardTTS(BaseTTS):
         if self.args.use_pitch:
             o_pitch_emb, o_pitch, avg_pitch = self._forward_pitch_predictor(o_en, x_mask, pitch, dr)
             o_en = o_en + o_pitch_emb
+        # energy predictor pass
+        o_energy = None
+        avg_energy = None
+        if self.args.use_energy:
+            o_energy_emb, o_energy, avg_energy = self._forward_energy_predictor(o_en, x_mask, energy, dr)
+            o_en = o_en + o_energy_emb
         # decoder pass
         o_de, attn = self._forward_decoder(
             o_en, dr, x_mask, y_lengths, g=None
@@ -566,6 +583,8 @@ class ForwardTTS(BaseTTS):
             "attn_durations": o_attn,  # for visualization [B, T_en, T_de']
             "pitch_avg": o_pitch,
             "pitch_avg_gt": avg_pitch,
+            "energy_avg": o_energy,
+            "energy_avg_gt": avg_energy,
             "alignments": attn,  # [B, T_de, T_en]
             "alignment_soft": alignment_soft,
             "alignment_mas": alignment_mas,
@@ -579,11 +598,9 @@ class ForwardTTS(BaseTTS):
     @torch.no_grad()
     def inference(self, x, aux_input={"d_vectors": None, "speaker_ids": None}):  # pylint: disable=unused-argument
         """Model's inference pass.
-
         Args:
             x (torch.LongTensor): Input character sequence.
             aux_input (Dict): Auxiliary model inputs. Defaults to `{"d_vectors": None, "speaker_ids": None}`.
-
         Shapes:
             - x: [B, T_max]
             - x_lengths: [B]
@@ -603,12 +620,18 @@ class ForwardTTS(BaseTTS):
         if self.args.use_pitch:
             o_pitch_emb, o_pitch = self._forward_pitch_predictor(o_en, x_mask)
             o_en = o_en + o_pitch_emb
+        # energy predictor pass
+        o_energy = None
+        if self.args.use_energy:
+            o_energy_emb, o_energy = self._forward_energy_predictor(o_en, x_mask)
+            o_en = o_en + o_energy_emb
         # decoder pass
         o_de, attn = self._forward_decoder(o_en, o_dr, x_mask, y_lengths, g=None)
         outputs = {
             "model_outputs": o_de,
             "alignments": attn,
             "pitch": o_pitch,
+            "energy": o_energy,
             "durations_log": o_dr_log,
         }
         return outputs
@@ -619,6 +642,7 @@ class ForwardTTS(BaseTTS):
         mel_input = batch["mel_input"]
         mel_lengths = batch["mel_lengths"]
         pitch = batch["pitch"] if self.args.use_pitch else None
+        energy = batch["energy"] if self.args.use_energy else None
         d_vectors = batch["d_vectors"]
         speaker_ids = batch["speaker_ids"]
         durations = batch["durations"]
@@ -626,7 +650,14 @@ class ForwardTTS(BaseTTS):
 
         # forward pass
         outputs = self.forward(
-            text_input, text_lengths, mel_lengths, y=mel_input, dr=durations, pitch=pitch, aux_input=aux_input
+            text_input,
+            text_lengths,
+            mel_lengths,
+            y=mel_input,
+            dr=durations,
+            pitch=pitch,
+            energy=energy,
+            aux_input=aux_input,
         )
         # use aligner's output as the duration target
         if self.use_aligner:
@@ -642,6 +673,8 @@ class ForwardTTS(BaseTTS):
                 dur_target=durations,
                 pitch_output=outputs["pitch_avg"] if self.use_pitch else None,
                 pitch_target=outputs["pitch_avg_gt"] if self.use_pitch else None,
+                energy_output=outputs["energy_avg"] if self.use_energy else None,
+                energy_target=outputs["energy_avg_gt"] if self.use_energy else None,
                 input_lens=text_lengths,
                 alignment_logprob=outputs["alignment_logprob"] if self.use_aligner else None,
                 alignment_soft=outputs["alignment_soft"],
@@ -682,6 +715,17 @@ class ForwardTTS(BaseTTS):
             }
             figures.update(pitch_figures)
 
+        # plot energy figures
+        if self.args.use_energy:
+            energy_avg = abs(outputs["energy_avg_gt"][0, 0].data.cpu().numpy())
+            energy_avg_hat = abs(outputs["energy_avg"][0, 0].data.cpu().numpy())
+            chars = self.tokenizer.decode(batch["text_input"][0].data.cpu().numpy())
+            energy_figures = {
+                "energy_ground_truth": plot_avg_energy(energy_avg, chars, output_fig=False),
+                "energy_avg_predicted": plot_avg_energy(energy_avg_hat, chars, output_fig=False),
+            }
+            figures.update(energy_figures)
+
         # plot the attention mask computed from the predicted durations
         if "attn_durations" in outputs:
             alignments_hat = outputs["attn_durations"][0].data.cpu().numpy()
@@ -707,9 +751,9 @@ class ForwardTTS(BaseTTS):
         logger.eval_audios(steps, audios, self.ap.sample_rate)
 
     def load_checkpoint(
-        self, config, checkpoint_path, eval=False
+        self, config, checkpoint_path, eval=False, cache=False
     ):  # pylint: disable=unused-argument, redefined-builtin
-        state = torch.load(checkpoint_path, map_location=torch.device("cpu"))
+        state = load_fsspec(checkpoint_path, map_location=torch.device("cpu"), cache=cache)
         self.load_state_dict(state["model"])
         if eval:
             self.eval()
@@ -727,7 +771,6 @@ class ForwardTTS(BaseTTS):
     @staticmethod
     def init_from_config(config: "ForwardTTSConfig", samples: Union[List[List], List[Dict]] = None):
         """Initiate model from config
-
         Args:
             config (ForwardTTSConfig): Model config.
             samples (Union[List[List], List[Dict]]): Training samples to parse speaker ids for training.

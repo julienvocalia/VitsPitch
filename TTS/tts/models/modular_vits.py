@@ -1247,7 +1247,7 @@ class ModularVits(BaseTTS):
         if pitch is not None:
             avg_pitch = average_over_durations(pitch, dr)
             o_pitch_emb = self.pitch_conv1d(avg_pitch)
-            return o_pitch_emb, o_pitch, avg_pitch        
+            return o_pitch_emb, o_pitch, avg_pitch
         o_pitch_emb = self.pitch_conv1d(o_pitch)
         return o_pitch_emb, o_pitch
 
