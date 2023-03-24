@@ -11,6 +11,7 @@ from torch.utils.data import Dataset
 
 from TTS.tts.utils.data import prepare_data, prepare_stop_target, prepare_tensor
 from TTS.utils.audio import AudioProcessor
+from TTS.utils.audio.numpy_transforms import compute_energy as calculate_energy
 
 # to prevent too many open files error as suggested here
 # https://github.com/pytorch/pytorch/issues/11201#issuecomment-421146936
@@ -50,7 +51,9 @@ class TTSDataset(Dataset):
         samples: List[Dict] = None,
         tokenizer: "TTSTokenizer" = None,
         compute_f0: bool = False,
+        compute_energy: bool = False,
         f0_cache_path: str = None,
+        energy_cache_path: str = None,
         return_wav: bool = False,
         batch_group_size: int = 0,
         min_text_len: int = 0,
@@ -65,61 +68,41 @@ class TTSDataset(Dataset):
         use_noise_augment: bool = False,
         start_by_longest: bool = False,
         verbose: bool = False,
-        training_phase: int = None
     ):
         """Generic 📂 data loader for `tts` models. It is configurable for different outputs and needs.
-
         If you need something different, you can subclass and override.
-
         Args:
             outputs_per_step (int): Number of time frames predicted per step.
-
             compute_linear_spec (bool): compute linear spectrogram if True.
-
             ap (TTS.tts.utils.AudioProcessor): Audio processor object.
-
             samples (list): List of dataset samples.
-
             tokenizer (TTSTokenizer): tokenizer to convert text to sequence IDs. If None init internally else
                 use the given. Defaults to None.
-
             compute_f0 (bool): compute f0 if True. Defaults to False.
-
+            compute_energy (bool): compute energy if True. Defaults to False.
             f0_cache_path (str): Path to store f0 cache. Defaults to None.
-
+            energy_cache_path (str): Path to store energy cache. Defaults to None.
             return_wav (bool): Return the waveform of the sample. Defaults to False.
-
             batch_group_size (int): Range of batch randomization after sorting
                 sequences by length. It shuffles each batch with bucketing to gather similar lenght sequences in a
                 batch. Set 0 to disable. Defaults to 0.
-
             min_text_len (int): Minimum length of input text to be used. All shorter samples will be ignored.
                 Defaults to 0.
-
             max_text_len (int): Maximum length of input text to be used. All longer samples will be ignored.
                 Defaults to float("inf").
-
             min_audio_len (int): Minimum length of input audio to be used. All shorter samples will be ignored.
                 Defaults to 0.
-
             max_audio_len (int): Maximum length of input audio to be used. All longer samples will be ignored.
                 The maximum length in the dataset defines the VRAM used in the training. Hence, pay attention to
                 this value if you encounter an OOM error in training. Defaults to float("inf").
-
             phoneme_cache_path (str): Path to cache computed phonemes. It writes phonemes of each sample to a
                 separate file. Defaults to None.
-
             precompute_num_workers (int): Number of workers to precompute features. Defaults to 0.
-
             speaker_id_mapping (dict): Mapping of speaker names to IDs used to compute embedding vectors by the
                 embedding layer. Defaults to None.
-
             d_vector_mapping (dict): Mapping of wav files to computed d-vectors. Defaults to None.
-
             use_noise_augment (bool): Enable adding random noise to wav for augmentation. Defaults to False.
-
             start_by_longest (bool): Start by longest sequence. It is especially useful to check OOM. Defaults to False.
-
             verbose (bool): Print diagnostic information. Defaults to false.
         """
         super().__init__()
@@ -129,7 +112,9 @@ class TTSDataset(Dataset):
         self.compute_linear_spec = compute_linear_spec
         self.return_wav = return_wav
         self.compute_f0 = compute_f0
+        self.compute_energy = compute_energy
         self.f0_cache_path = f0_cache_path
+        self.energy_cache_path = energy_cache_path
         self.min_audio_len = min_audio_len
         self.max_audio_len = max_audio_len
         self.min_text_len = min_text_len
@@ -156,10 +141,12 @@ class TTSDataset(Dataset):
             self.f0_dataset = F0Dataset(
                 self.samples, self.ap, cache_path=f0_cache_path, precompute_num_workers=precompute_num_workers
             )
-
+        if compute_energy:
+            self.energy_dataset = EnergyDataset(
+                self.samples, self.ap, cache_path=energy_cache_path, precompute_num_workers=precompute_num_workers
+            )
         if self.verbose:
             self.print_logs()
-        self.training_phase=training_phase
 
     @property
     def lengths(self):
@@ -179,6 +166,8 @@ class TTSDataset(Dataset):
         self._samples = new_samples
         if hasattr(self, "f0_dataset"):
             self.f0_dataset.samples = new_samples
+        if hasattr(self, "energy_dataset"):
+            self.energy_dataset.samples = new_samples
         if hasattr(self, "phoneme_dataset"):
             self.phoneme_dataset.samples = new_samples
 
@@ -209,6 +198,12 @@ class TTSDataset(Dataset):
 
     def get_f0(self, idx):
         out_dict = self.f0_dataset[idx]
+        item = self.samples[idx]
+        assert item["audio_unique_name"] == out_dict["audio_unique_name"]
+        return out_dict
+
+    def get_energy(self, idx):
+        out_dict = self.energy_dataset[idx]
         item = self.samples[idx]
         assert item["audio_unique_name"] == out_dict["audio_unique_name"]
         return out_dict
@@ -254,12 +249,16 @@ class TTSDataset(Dataset):
         f0 = None
         if self.compute_f0:
             f0 = self.get_f0(idx)["f0"]
+        energy = None
+        if self.compute_energy:
+            energy = self.get_energy(idx)["energy"]
 
         sample = {
             "raw_text": raw_text,
             "token_ids": token_ids,
             "wav": wav,
             "pitch": f0,
+            "energy": energy,
             "attn": attn,
             "item_idx": item["audio_file"],
             "speaker_name": item["speaker_name"],
@@ -367,12 +366,10 @@ class TTSDataset(Dataset):
             print(" | > Avg audio length: {}".format(np.mean(audio_lengths)))
             print(f" | > Num. instances discarded samples: {len(ignore_idx)}")
             print(" | > Batch group size: {}.".format(self.batch_group_size))
-            print(" | > Training Phase: {}.".format(self.training_phase))
 
     @staticmethod
     def _sort_batch(batch, text_lengths):
         """Sort the batch by the input text length for RNN efficiency.
-
         Args:
             batch (Dict): Batch returned by `__getitem__`.
             text_lengths (List[int]): Lengths of the input character sequences.
@@ -392,7 +389,6 @@ class TTSDataset(Dataset):
 
         # Puts each data field into a tensor with outer dimension batch size
         if isinstance(batch[0], collections.abc.Mapping):
-
             token_ids_lengths = np.array([len(d["token_ids"]) for d in batch])
 
             # sort items with text input length for RNN efficiency
@@ -493,7 +489,13 @@ class TTSDataset(Dataset):
                 pitch = torch.FloatTensor(pitch)[:, None, :].contiguous()  # B x 1 xT
             else:
                 pitch = None
-
+            # format energy
+            if self.compute_energy:
+                energy = prepare_data(batch["energy"])
+                assert mel.shape[1] == energy.shape[1], f"[!] {mel.shape} vs {energy.shape}"
+                energy = torch.FloatTensor(energy)[:, None, :].contiguous()  # B x 1 xT
+            else:
+                energy = None
             # format attention masks
             attns = None
             if batch["attn"][0] is not None:
@@ -522,7 +524,9 @@ class TTSDataset(Dataset):
                 "waveform": wav_padded,
                 "raw_text": batch["raw_text"],
                 "pitch": pitch,
+                "energy": energy,
                 "language_ids": language_ids,
+                "audio_unique_names": batch["audio_unique_name"],
             }
 
         raise TypeError(
@@ -537,20 +541,15 @@ class TTSDataset(Dataset):
 
 class PhonemeDataset(Dataset):
     """Phoneme Dataset for converting input text to phonemes and then token IDs
-
     At initialization, it pre-computes the phonemes under `cache_path` and loads them in training to reduce data
     loading latency. If `cache_path` is already present, it skips the pre-computation.
-
     Args:
         samples (Union[List[List], List[Dict]]):
             List of samples. Each sample is a list or a dict.
-
         tokenizer (TTSTokenizer):
             Tokenizer to convert input text to phonemes.
-
         cache_path (str):
             Path to cache phonemes. If `cache_path` is already present or None, it skips the pre-computation.
-
         precompute_num_workers (int):
             Number of workers used for pre-computing the phonemes. Defaults to 0.
     """
@@ -571,16 +570,15 @@ class PhonemeDataset(Dataset):
 
     def __getitem__(self, index):
         item = self.samples[index]
-        ids = self.compute_or_load(string2filename(item["audio_unique_name"]), item["text"])
+        ids = self.compute_or_load(string2filename(item["audio_unique_name"]), item["text"], item["language"])
         ph_hat = self.tokenizer.ids_to_text(ids)
         return {"text": item["text"], "ph_hat": ph_hat, "token_ids": ids, "token_ids_len": len(ids)}
 
     def __len__(self):
         return len(self.samples)
 
-    def compute_or_load(self, file_name, text):
+    def compute_or_load(self, file_name, text, language):
         """Compute phonemes for the given text.
-
         If the phonemes are already cached, load them from cache.
         """
         file_ext = "_phoneme.npy"
@@ -588,7 +586,7 @@ class PhonemeDataset(Dataset):
         try:
             ids = np.load(cache_path)
         except FileNotFoundError:
-            ids = self.tokenizer.text_to_ids(text)
+            ids = self.tokenizer.text_to_ids(text, language=language)
             np.save(cache_path, ids)
         return ids
 
@@ -598,7 +596,6 @@ class PhonemeDataset(Dataset):
 
     def precompute(self, num_workers=1):
         """Precompute phonemes for all samples.
-
         We use pytorch dataloader because we are lazy.
         """
         print("[*] Pre-computing phonemes...")
@@ -632,24 +629,18 @@ class PhonemeDataset(Dataset):
 
 class F0Dataset:
     """F0 Dataset for computing F0 from wav files in CPU
-
     Pre-compute F0 values for all the samples at initialization if `cache_path` is not None or already present. It
     also computes the mean and std of F0 values if `normalize_f0` is True.
-
     Args:
         samples (Union[List[List], List[Dict]]):
             List of samples. Each sample is a list or a dict.
-
         ap (AudioProcessor):
             AudioProcessor to compute F0 from wav files.
-
         cache_path (str):
             Path to cache F0 values. If `cache_path` is already present or None, it skips the pre-computation.
             Defaults to None.
-
         precompute_num_workers (int):
             Number of workers used for pre-computing the F0 values. Defaults to 0.
-
         normalize_f0 (bool):
             Whether to normalize F0 values by mean and std. Defaults to True.
     """
@@ -778,4 +769,150 @@ class F0Dataset:
         indent = "\t" * level
         print("\n")
         print(f"{indent}> F0Dataset ")
+        print(f"{indent}| > Number of instances : {len(self.samples)}")
+
+
+class EnergyDataset:
+    """Energy Dataset for computing Energy from wav files in CPU
+    Pre-compute Energy values for all the samples at initialization if `cache_path` is not None or already present. It
+    also computes the mean and std of Energy values if `normalize_Energy` is True.
+    Args:
+        samples (Union[List[List], List[Dict]]):
+            List of samples. Each sample is a list or a dict.
+        ap (AudioProcessor):
+            AudioProcessor to compute Energy from wav files.
+        cache_path (str):
+            Path to cache Energy values. If `cache_path` is already present or None, it skips the pre-computation.
+            Defaults to None.
+        precompute_num_workers (int):
+            Number of workers used for pre-computing the Energy values. Defaults to 0.
+        normalize_Energy (bool):
+            Whether to normalize Energy values by mean and std. Defaults to True.
+    """
+
+    def __init__(
+        self,
+        samples: Union[List[List], List[Dict]],
+        ap: "AudioProcessor",
+        verbose=False,
+        cache_path: str = None,
+        precompute_num_workers=0,
+        normalize_energy=True,
+    ):
+        self.samples = samples
+        self.ap = ap
+        self.verbose = verbose
+        self.cache_path = cache_path
+        self.normalize_energy = normalize_energy
+        self.pad_id = 0.0
+        self.mean = None
+        self.std = None
+        if cache_path is not None and not os.path.exists(cache_path):
+            os.makedirs(cache_path)
+            self.precompute(precompute_num_workers)
+        if normalize_energy:
+            self.load_stats(cache_path)
+
+    def __getitem__(self, idx):
+        item = self.samples[idx]
+        energy = self.compute_or_load(item["audio_file"], string2filename(item["audio_unique_name"]))
+        if self.normalize_energy:
+            assert self.mean is not None and self.std is not None, " [!] Mean and STD is not available"
+            energy = self.normalize(energy)
+        return {"audio_unique_name": item["audio_unique_name"], "energy": energy}
+
+    def __len__(self):
+        return len(self.samples)
+
+    def precompute(self, num_workers=0):
+        print("[*] Pre-computing energys...")
+        with tqdm.tqdm(total=len(self)) as pbar:
+            batch_size = num_workers if num_workers > 0 else 1
+            # we do not normalize at preproessing
+            normalize_energy = self.normalize_energy
+            self.normalize_energy = False
+            dataloder = torch.utils.data.DataLoader(
+                batch_size=batch_size, dataset=self, shuffle=False, num_workers=num_workers, collate_fn=self.collate_fn
+            )
+            computed_data = []
+            for batch in dataloder:
+                energy = batch["energy"]
+                computed_data.append(e for e in energy)
+                pbar.update(batch_size)
+            self.normalize_energy = normalize_energy
+
+        if self.normalize_energy:
+            computed_data = [tensor for batch in computed_data for tensor in batch]  # flatten
+            energy_mean, energy_std = self.compute_energy_stats(computed_data)
+            energy_stats = {"mean": energy_mean, "std": energy_std}
+            np.save(os.path.join(self.cache_path, "energy_stats"), energy_stats, allow_pickle=True)
+
+    def get_pad_id(self):
+        return self.pad_id
+
+    @staticmethod
+    def create_energy_file_path(wav_file, cache_path):
+        file_name = os.path.splitext(os.path.basename(wav_file))[0]
+        energy_file = os.path.join(cache_path, file_name + "_energy.npy")
+        return energy_file
+
+    @staticmethod
+    def _compute_and_save_energy(ap, wav_file, energy_file=None):
+        wav = ap.load_wav(wav_file)
+        energy = calculate_energy(wav, fft_size=ap.fft_size, hop_length=ap.hop_length, win_length=ap.win_length)
+        if energy_file:
+            np.save(energy_file, energy)
+        return energy
+
+    @staticmethod
+    def compute_energy_stats(energy_vecs):
+        nonzeros = np.concatenate([v[np.where(v != 0.0)[0]] for v in energy_vecs])
+        mean, std = np.mean(nonzeros), np.std(nonzeros)
+        return mean, std
+
+    def load_stats(self, cache_path):
+        stats_path = os.path.join(cache_path, "energy_stats.npy")
+        stats = np.load(stats_path, allow_pickle=True).item()
+        self.mean = stats["mean"].astype(np.float32)
+        self.std = stats["std"].astype(np.float32)
+
+    def normalize(self, energy):
+        zero_idxs = np.where(energy == 0.0)[0]
+        energy = energy - self.mean
+        energy = energy / self.std
+        energy[zero_idxs] = 0.0
+        return energy
+
+    def denormalize(self, energy):
+        zero_idxs = np.where(energy == 0.0)[0]
+        energy *= self.std
+        energy += self.mean
+        energy[zero_idxs] = 0.0
+        return energy
+
+    def compute_or_load(self, wav_file, audio_unique_name):
+        """
+        compute energy and return a numpy array of energy values
+        """
+        energy_file = self.create_energy_file_path(audio_unique_name, self.cache_path)
+        if not os.path.exists(energy_file):
+            energy = self._compute_and_save_energy(self.ap, wav_file, energy_file)
+        else:
+            energy = np.load(energy_file)
+        return energy.astype(np.float32)
+
+    def collate_fn(self, batch):
+        audio_unique_name = [item["audio_unique_name"] for item in batch]
+        energys = [item["energy"] for item in batch]
+        energy_lens = [len(item["energy"]) for item in batch]
+        energy_lens_max = max(energy_lens)
+        energys_torch = torch.LongTensor(len(energys), energy_lens_max).fill_(self.get_pad_id())
+        for i, energy_len in enumerate(energy_lens):
+            energys_torch[i, :energy_len] = torch.LongTensor(energys[i])
+        return {"audio_unique_name": audio_unique_name, "energy": energys_torch, "energy_lens": energy_lens}
+
+    def print_logs(self, level: int = 0) -> None:
+        indent = "\t" * level
+        print("\n")
+        print(f"{indent}> energyDataset ")
         print(f"{indent}| > Number of instances : {len(self.samples)}")
